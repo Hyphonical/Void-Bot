@@ -14,6 +14,22 @@ from discord.ext import commands
 import discord
 
 
+# 💡 Get emoji based on latency
+def GetPingEmoji(Latency: float) -> str:
+	if Latency > 500:
+		return '<:Ping1:1411342192647082045>'  # Extremely high
+	elif Latency > 400:
+		return '<:Ping2:1411342222489550940>'
+	elif Latency > 300:
+		return '<:Ping3:1411342248628588595>'
+	elif Latency > 200:
+		return '<:Ping4:1411342274423558275>'
+	elif Latency > 100:
+		return '<:Ping5:1411342297856999424>'
+	else:
+		return '<:Ping6:1411342320955031664>'  # Low ping
+
+
 class PlayerStats(commands.Cog):
 	def __init__(self, Bot: commands.Bot) -> None:
 		self.Bot = Bot
@@ -90,12 +106,12 @@ class PlayerStats(commands.Cog):
 			color=0xA0D6B4,
 		)
 		Embed.description = f"""
-		Playtime: `{Playtime}`
-		Sessions: `{Sessions}`
+		Playtime: `{Playtime}` <:Time:1411437655866085528>
+		Sessions: `{Sessions}` <:Sessions:1411440697248186500>
 		Country: `{Country}` {CountryFlag if CountryFlag else ''}
-		Avg Ping: `{PingAvg} ms`
-		Balance: `{Balance} $`
-		Primary Group: `{Group}`
+		Avg Ping: `{PingAvg}ms` {GetPingEmoji(PingAvg)}
+		Balance: `{Balance}` <:Balance:1411436246659502262>
+		Rank: `{Group}` <:Winner:1411440476833316919>
 		"""
 		Embed.set_thumbnail(
 			url=f'https://api.mineatar.io/head/{Player.get("playerUUID")}?scale=10&overlay=true'

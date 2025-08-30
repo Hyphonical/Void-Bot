@@ -59,13 +59,18 @@ class Leaderboard(commands.Cog):
 		SortedPlayers = sorted(Players, key=lambda P: P.get('activityIndex', 0), reverse=True)
 
 		# 📈 Get top 10 and normalize activity index to percentage
+		Medals = {
+			1: '<:Rank1:1411435162578849863>',
+			2: '<:Rank2:1411435194610876466>',
+			3: '<:Rank3:1411435240706015332>',
+		}
 		TopPlayers = SortedPlayers[:10]
 		LeaderboardText = ''
 		for i, Player in enumerate(TopPlayers, start=1):
 			Name = Player.get('playerName', 'Unknown')
 			ActivityIndex = Player.get('activityIndex', 0)
 			Percentage = round((ActivityIndex / 5) * 100, 2) if ActivityIndex else 0
-			LeaderboardText += f'{i}. {Name}: `{Percentage}%`\n'
+			LeaderboardText += f'{i}. {Name}: `{Percentage}%` {Medals.get(i, "")}\n'
 
 		# 🎨 Create embed
 		Embed = discord.Embed(

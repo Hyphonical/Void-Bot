@@ -145,8 +145,8 @@ def CreateStatusEmbed(
 		color=0xA0D6B4,
 	)
 	Embed.description = f"""
-	Version: `{Version}`
-	Players: `{PlayersOnline}/{PlayersMax}`
+	Version: `{Version}` <:Version:1411439439342731334>
+	Players: `{PlayersOnline}/{PlayersMax}` <:Player:1411439027508220043>
 	Latency: `{LatencyText}` {PingEmoji}
 	Description: ```{Description}```
 	"""
@@ -258,7 +258,9 @@ class RefreshView(View):
 		self.BotName = BotName
 		self.PlanAPI = PlanAPI
 
-	@discord.ui.button(label='Refresh', style=discord.ButtonStyle.grey, emoji='🔄')
+	@discord.ui.button(
+		label='Refresh', style=discord.ButtonStyle.grey, emoji='<:Refresh:1411438460190986330>'
+	)
 	async def RefreshButton(self, interaction: discord.Interaction, button: Button):
 		try:
 			# 🌐 Re-fetch server status
