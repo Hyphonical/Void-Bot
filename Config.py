@@ -20,4 +20,8 @@ CommandPrefix = '!'
 
 # <-- Minecraft Settings -->
 
+Presence = discord.Game(name='Void Tales')
 ProtocolVersion = 766  # 1.20.5
+DefaultServer = 'play.voidtales.win'
+DefaultServerPort = 25565
+PresenceUpdateInterval = 30

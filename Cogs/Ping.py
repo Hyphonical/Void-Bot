@@ -1,19 +1,6 @@
 # 👾 Discord modules
 from discord.ext import commands
-
-
-# 💡 Helper function to format nanoseconds into readable units
-def FormatNs(Ns: int) -> str:
-	Ms = Ns // 1_000_000
-	Us = (Ns % 1_000_000) // 1_000
-	NsRem = Ns % 1_000
-	Parts = []
-	if Ms > 0:
-		Parts.append(f'{Ms}ms')
-	if Us > 0 or Ms > 0:
-		Parts.append(f'{Us}µs')
-	Parts.append(f'{NsRem}ns')
-	return ' '.join(Parts)
+import discord
 
 
 class Ping(commands.Cog):
@@ -24,7 +11,12 @@ class Ping(commands.Cog):
 		name='ping', aliases=['latency'], description="Check the bot's latency"
 	)
 	async def ping(self, ctx: commands.Context) -> None:
-		await ctx.send(f'`Latency: {self.Bot.latency * 1000:.2f}ms`')
+		Embed = discord.Embed(
+			title='Latency',
+			description=f'`{self.Bot.latency * 1000:.2f}ms`',
+			color=0xA0D6B4,
+		)
+		await ctx.send(embed=Embed)
 
 
 async def setup(Bot: commands.Bot) -> None:
