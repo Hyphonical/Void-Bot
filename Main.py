@@ -32,17 +32,10 @@ def LoadEnv() -> Dict[str, str]:
 				if '=' in Line:
 					Key, Value = Line.strip().split('=', 1)
 					EnvDict[Key] = Value
+					os.environ[Key] = Value
 		return EnvDict
 	except FileNotFoundError:
-		# 🔄 Fallback to process environment when .env is missing
-		Keys = ['DISCORD_BOT_TOKEN']
-		for Key in Keys:
-			Value = os.environ.get(Key)
-			if Value:
-				EnvDict[Key] = Value
-		if not EnvDict:
-			raise ValueError('No valid environment variables found.')
-		return EnvDict
+		raise ValueError('No valid environment variables found.')
 
 
 class Bot(commands.Bot):
@@ -53,7 +46,7 @@ class Bot(commands.Bot):
 		for Cog in pathlib.Path('Cogs').glob('*.py'):
 			if Cog.name.startswith('_'):
 				continue
-			Logger.info(f'• Loading extension: Cogs.{Cog.stem}')
+			Logger.info(f'• Loading extension: {Cog.stem}')
 			await self.load_extension(f'Cogs.{Cog.stem}')
 		Logger.info('• Syncing application commands...')
 		await self.tree.sync()

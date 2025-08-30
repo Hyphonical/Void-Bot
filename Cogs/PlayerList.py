@@ -14,9 +14,11 @@ class Players(commands.Cog):
 		self.Bot = Bot
 
 	@commands.hybrid_command(
-		name='players', description='List online players on the Minecraft server'
+		name='playerlist',
+		description='List online players on the Minecraft server',
+		aliases=['players', 'list'],
 	)
-	async def PlayersList(
+	async def PlayerList(
 		self, ctx: commands.Context, host: str | None = None, port: int = 25565
 	) -> None:
 		if host is None:
@@ -49,8 +51,13 @@ class Players(commands.Cog):
 					color=0xA0D6B4,
 				)
 				await ctx.send(embed=Embed)
-		except Exception as E:
-			await ctx.send(f'❌ Failed to fetch player list: {str(E)}')
+		except Exception:
+			Embed = discord.Embed(
+				title='Error',
+				description='Failed to fetch player list',
+				color=0xF5A3A3,
+			)
+			await ctx.send(embed=Embed)
 
 
 async def setup(Bot: commands.Bot) -> None:

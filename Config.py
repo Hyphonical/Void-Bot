@@ -24,9 +24,16 @@ Intents.message_content = True
 # Command Prefix
 CommandPrefix = '!'
 
+# Bot Name
+BotName = 'Void Bot'
+
 # <-- Minecraft Settings -->
 
 ProtocolVersion = 766  # 1.20.5
 DefaultServer = 'play.voidtales.win'
 DefaultServerPort = 25565
 PresenceUpdateInterval = 30
+
+# <-- Player Stats Settings -->
+
+FuzzyMatchingThreshold = 0.6

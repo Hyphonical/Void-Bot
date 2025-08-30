@@ -80,8 +80,13 @@ class Minecraft(commands.Cog):
 				await ctx.send(embed=Embed, file=File)
 			else:
 				await ctx.send(embed=Embed)
-		except Exception as E:
-			await ctx.send(f'❌ Failed to fetch server status: {str(E)}')
+		except Exception:
+			Embed = discord.Embed(
+				title='Error',
+				description='Failed to fetch server status',
+				color=0xF5A3A3,
+			)
+			await ctx.send(embed=Embed)
 
 
 async def setup(Bot: commands.Bot) -> None:

@@ -23,7 +23,7 @@ class Highlighter(RegexHighlighter):
 		r'Message from (?P<User>.*?): (?P<SentMessage>.*?)',
 		r'Message edited by (?P<User>.*?): "(?P<OriginalMessage>.*?)" -> "(?P<EditedMessage>.*?)"',
 		r'Message deleted by (?P<User>.*?): "(?P<DeletedMessage>.*?)"',
-		r'Loading extension: (?P<Cog>Cogs\..*)',
+		r'Loading extension: (?P<Cog>.*)',
 		rf'(?P<Command>{CommandPrefix}.*)',
 	]
 

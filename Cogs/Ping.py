@@ -10,7 +10,7 @@ class Ping(commands.Cog):
 	@commands.hybrid_command(
 		name='ping', aliases=['latency'], description="Check the bot's latency"
 	)
-	async def ping(self, ctx: commands.Context) -> None:
+	async def Ping(self, ctx: commands.Context) -> None:
 		Embed = discord.Embed(
 			title='Latency',
 			description=f'`{self.Bot.latency * 1000:.2f}ms`',
