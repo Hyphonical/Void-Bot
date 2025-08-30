@@ -34,6 +34,7 @@ def LoadEnv():
 				if '=' in Line:
 					Key, Value = Line.strip().split('=', 1)
 					EnvDict[Key] = Value
+					os.environ[Key] = Value
 		return EnvDict
 	except FileNotFoundError:
 		# 🔄 Fallback to process environment when .env is missing

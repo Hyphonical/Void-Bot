@@ -14,6 +14,7 @@ from Config import (
 )
 
 # 👾 Discord modules
+from discord.ui import View, Button
 from discord.ext import commands
 import discord
 
@@ -75,6 +76,45 @@ def GetPingEmoji(Latency: float | None) -> str:
 		return '<:Ping6:1411342320955031664>'  # Low ping
 
 
+# 💡 Create status embed and file from server data
+def CreateStatusEmbed(
+	Status, Host: str, Port: int, BotName: str
+) -> tuple[discord.Embed, discord.File | None]:
+	# 📊 Format the response as an embed
+	Version = Status.get('version', {}).get('name', 'Unknown')
+	PlayersOnline = Status.get('players', {}).get('online', 0)
+	PlayersMax = Status.get('players', {}).get('max', 0)
+	Description = FormatDescription(Status.get('description', 'No description'))
+	FaviconUrl = Status.get('favicon')
+
+	# 📡 Measure latency
+	Latency = MeasureLatency(Host, Port)
+	PingEmoji = GetPingEmoji(Latency)
+	LatencyText = f'{Latency:.0f}ms' if Latency is not None else 'Offline'
+
+	Embed = discord.Embed(
+		title=f'Minecraft Server Status for {Host}:{Port}',
+		color=0xA0D6B4,
+	)
+	Embed.add_field(name='Version', value=Version, inline=True)
+	Embed.add_field(name='Players', value=f'{PlayersOnline}/{PlayersMax}', inline=True)
+	Embed.add_field(name='Latency', value=f'{PingEmoji} {LatencyText}', inline=True)
+	Embed.add_field(name='Description', value=Description, inline=False)
+
+	# 🖼️ Add server logo if available
+	File = None
+	if FaviconUrl and ',' in FaviconUrl:
+		# Decode base64 and create file attachment
+		Base64Data = FaviconUrl.split(',', 1)[1]
+		ImageData = base64.b64decode(Base64Data)
+		ImageBuffer = io.BytesIO(ImageData)
+		ImageBuffer.seek(0)
+		File = discord.File(ImageBuffer, 'favicon.png')
+		Embed.set_thumbnail(url='attachment://favicon.png')
+	Embed.set_footer(text=BotName)
+	return Embed, File
+
+
 class Minecraft(commands.Cog):
 	def __init__(self, Bot: commands.Bot) -> None:
 		self.Bot = Bot
@@ -94,43 +134,15 @@ class Minecraft(commands.Cog):
 		try:
 			# 🌐 Fetch server status
 			Status = GetStatus(host, port)
+			Embed, File = CreateStatusEmbed(Status, host, port, BotName)
 
-			# 📊 Format the response as an embed
-			Version = Status.get('version', {}).get('name', 'Unknown')
-			PlayersOnline = Status.get('players', {}).get('online', 0)
-			PlayersMax = Status.get('players', {}).get('max', 0)
-			Description = FormatDescription(Status.get('description', 'No description'))
-			FaviconUrl = Status.get('favicon')
+			# 🔄 Create and attach the refresh view
+			ViewInstance = RefreshView(host, port, BotName)
 
-			# 📡 Measure latency
-			Latency = MeasureLatency(host, port)
-			PingEmoji = GetPingEmoji(Latency)
-			LatencyText = f'{Latency:.0f}ms' if Latency is not None else 'Offline'
-
-			Embed = discord.Embed(
-				title=f'Minecraft Server Status for {host}:{port}',
-				color=0xA0D6B4,
-			)
-			Embed.add_field(name='Version', value=Version, inline=True)
-			Embed.add_field(name='Players', value=f'{PlayersOnline}/{PlayersMax}', inline=True)
-			Embed.add_field(name='Latency', value=f'{PingEmoji} {LatencyText}', inline=True)
-			Embed.add_field(name='Description', value=Description, inline=False)
-
-			# 🖼️ Add server logo if available
-			File = None
-			if FaviconUrl and ',' in FaviconUrl:
-				# Decode base64 and create file attachment
-				Base64Data = FaviconUrl.split(',', 1)[1]
-				ImageData = base64.b64decode(Base64Data)
-				ImageBuffer = io.BytesIO(ImageData)
-				ImageBuffer.seek(0)
-				File = discord.File(ImageBuffer, 'favicon.png')
-				Embed.set_thumbnail(url='attachment://favicon.png')
-				Embed.set_footer(text=BotName)
-				await ctx.send(embed=Embed, file=File)
+			if File:
+				await ctx.send(embed=Embed, file=File, view=ViewInstance)
 			else:
-				Embed.set_footer(text=BotName)
-				await ctx.send(embed=Embed)
+				await ctx.send(embed=Embed, view=ViewInstance)
 		except Exception:
 			Embed = discord.Embed(
 				title='Error',
@@ -139,6 +151,30 @@ class Minecraft(commands.Cog):
 			)
 			Embed.set_footer(text=BotName)
 			await ctx.send(embed=Embed)
+
+
+class RefreshView(View):
+	def __init__(self, Host: str, Port: int, BotName: str):
+		super().__init__(timeout=None)
+		self.Host = Host
+		self.Port = Port
+		self.BotName = BotName
+
+	@discord.ui.button(label='Refresh', style=discord.ButtonStyle.grey, emoji='🔄')
+	async def RefreshButton(self, interaction: discord.Interaction, button: Button):
+		try:
+			# 🌐 Re-fetch server status
+			Status = GetStatus(self.Host, self.Port)
+			Embed, File = CreateStatusEmbed(Status, self.Host, self.Port, self.BotName)
+			await interaction.response.edit_message(embed=Embed, view=self)
+		except Exception:
+			ErrorEmbed = discord.Embed(
+				title='Error',
+				description='Failed to fetch server status',
+				color=0xF5A3A3,
+			)
+			ErrorEmbed.set_footer(text=self.BotName)
+			await interaction.response.edit_message(embed=ErrorEmbed, view=self)
 
 
 async def setup(Bot: commands.Bot) -> None:
