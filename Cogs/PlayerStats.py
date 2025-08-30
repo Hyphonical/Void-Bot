@@ -97,7 +97,9 @@ class PlayerStats(commands.Cog):
 		Balance: `{Balance} $`
 		Primary Group: `{Group}`
 		"""
-		Embed.set_thumbnail(url=f'https://api.mineatar.io/head/{Player.get("playerUUID")}?scale=16')
+		Embed.set_thumbnail(
+			url=f'https://api.mineatar.io/head/{Player.get("playerUUID")}?scale=10&overlay=true'
+		)
 		Embed.set_footer(text=BotName)
 		await ctx.send(embed=Embed)
 
