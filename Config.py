@@ -27,6 +27,9 @@ CommandPrefix = '!'
 # Bot Name
 BotName = 'Void Bot'
 
+# Message Cooldown (in seconds) - Prevents spamming commands/messages
+MessageCooldown = 5
+
 # <-- Minecraft Settings -->
 
 ProtocolVersion = 766  # 1.20.5

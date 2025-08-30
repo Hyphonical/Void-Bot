@@ -7,6 +7,7 @@ import time
 # 📥 Custom modules
 from Config import DefaultServer, DefaultServerPort
 from Utils.Socket import GetStatus
+from Utils.Plan import PlanAPI
 
 # ⚙️ Settings
 from Config import (
@@ -78,7 +79,7 @@ def GetPingEmoji(Latency: float | None) -> str:
 
 # 💡 Create status embed and file from server data
 def CreateStatusEmbed(
-	Status, Host: str, Port: int, BotName: str
+	Status, Host: str, Port: int, BotName: str, PerfData: dict | None = None
 ) -> tuple[discord.Embed, discord.File | None]:
 	# 📊 Format the response as an embed
 	Version = Status.get('version', {}).get('name', 'Unknown')
@@ -92,14 +93,26 @@ def CreateStatusEmbed(
 	PingEmoji = GetPingEmoji(Latency)
 	LatencyText = f'{Latency:.0f}ms' if Latency is not None else 'Offline'
 
+	# 📈 Add performance data if available
+	PerfText = ''
+	if PerfData and 'numbers' in PerfData:
+		Numbers = PerfData['numbers']
+		Tps24h = Numbers.get('tps_24h', 'N/A')
+		Downtime24h = Numbers.get('server_downtime_24h', 'N/A')
+		Cpu24h = Numbers.get('cpu_24h', 'N/A')
+		Ram24h = Numbers.get('ram_24h', 'N/A')
+		PerfText = f'\nTPS (24h): `{Tps24h}`\nDowntime (24h): `{Downtime24h}`\nCPU (24h): `{Cpu24h}`\nRAM (24h): `{Ram24h}`'
+
 	Embed = discord.Embed(
 		title=f'Minecraft Server Status for {Host}:{Port}',
 		color=0xA0D6B4,
 	)
-	Embed.add_field(name='Version', value=Version, inline=True)
-	Embed.add_field(name='Players', value=f'{PlayersOnline}/{PlayersMax}', inline=True)
-	Embed.add_field(name='Latency', value=f'{PingEmoji} {LatencyText}', inline=True)
-	Embed.add_field(name='Description', value=Description, inline=False)
+	Embed.description = f"""
+	Version: `{Version}`
+	Players: `{PlayersOnline}/{PlayersMax}`
+	Latency: `{LatencyText}` {PingEmoji}
+	Description: `{Description}`{PerfText}
+	"""
 
 	# 🖼️ Add server logo if available
 	File = None
@@ -118,6 +131,7 @@ def CreateStatusEmbed(
 class Minecraft(commands.Cog):
 	def __init__(self, Bot: commands.Bot) -> None:
 		self.Bot = Bot
+		self.PlanAPI = PlanAPI()
 
 	@commands.hybrid_command(
 		name='mcstatus',
@@ -134,10 +148,13 @@ class Minecraft(commands.Cog):
 		try:
 			# 🌐 Fetch server status
 			Status = GetStatus(host, port)
-			Embed, File = CreateStatusEmbed(Status, host, port, BotName)
+			# 📈 Fetch performance data
+			ServerUUID = self.PlanAPI.Env.get('PLAN_SERVER_UUID')
+			PerfData = self.PlanAPI.GetPerformanceOverview(ServerUUID) if ServerUUID else None
+			Embed, File = CreateStatusEmbed(Status, host, port, BotName, PerfData)
 
 			# 🔄 Create and attach the refresh view
-			ViewInstance = RefreshView(host, port, BotName)
+			ViewInstance = RefreshView(host, port, BotName, self.PlanAPI)
 
 			if File:
 				await ctx.send(embed=Embed, file=File, view=ViewInstance)
@@ -152,20 +169,70 @@ class Minecraft(commands.Cog):
 			Embed.set_footer(text=BotName)
 			await ctx.send(embed=Embed)
 
+	@commands.hybrid_command(
+		name='mcperf',
+		description='Get Minecraft server performance overview',
+		aliases=['perf', 'performance'],
+	)
+	async def MCPerf(self, ctx: commands.Context) -> None:
+		ServerUUID = self.PlanAPI.Env.get('PLAN_SERVER_UUID')
+		if not ServerUUID:
+			Embed = discord.Embed(
+				title='Error',
+				description='Environment variables are missing',
+				color=0xF5A3A3,
+			)
+			Embed.set_footer(text=BotName)
+			await ctx.send(embed=Embed)
+			return
+		PerfData = self.PlanAPI.GetPerformanceOverview(ServerUUID)
+		if not PerfData or 'numbers' not in PerfData:
+			Embed = discord.Embed(
+				title='Error',
+				description='Failed to fetch performance data',
+				color=0xF5A3A3,
+			)
+			Embed.set_footer(text=BotName)
+			await ctx.send(embed=Embed)
+			return
+		Numbers = PerfData['numbers']
+		Embed = discord.Embed(
+			title='Server Performance Overview',
+			color=0xA0D6B4,
+		)
+		Embed.description = f"""
+		TPS (24h): `{Numbers.get('tps_24h', 'N/A')}`
+		TPS (7d): `{Numbers.get('tps_7d', 'N/A')}`
+		TPS (30d): `{Numbers.get('tps_30d', 'N/A')}`
+		Downtime (24h): `{Numbers.get('server_downtime_24h', 'N/A')}`
+		Downtime (7d): `{Numbers.get('server_downtime_7d', 'N/A')}`
+		Downtime (30d): `{Numbers.get('server_downtime_30d', 'N/A')}`
+		CPU (24h): `{Numbers.get('cpu_24h', 'N/A')}`
+		RAM (24h): `{Numbers.get('ram_24h', 'N/A')}`
+		Entities (24h): `{Numbers.get('entities_24h', 'N/A')}`
+		Chunks (24h): `{Numbers.get('chunks_24h', 'N/A')}`
+		"""
+		Embed.set_footer(text=BotName)
+		await ctx.send(embed=Embed)
+
 
 class RefreshView(View):
-	def __init__(self, Host: str, Port: int, BotName: str):
+	def __init__(self, Host: str, Port: int, BotName: str, PlanAPI: PlanAPI):
 		super().__init__(timeout=None)
 		self.Host = Host
 		self.Port = Port
 		self.BotName = BotName
+		self.PlanAPI = PlanAPI
 
 	@discord.ui.button(label='Refresh', style=discord.ButtonStyle.grey, emoji='🔄')
 	async def RefreshButton(self, interaction: discord.Interaction, button: Button):
 		try:
 			# 🌐 Re-fetch server status
 			Status = GetStatus(self.Host, self.Port)
-			Embed, File = CreateStatusEmbed(Status, self.Host, self.Port, self.BotName)
+			# 📈 Re-fetch performance data
+			ServerUUID = self.PlanAPI.Env.get('PLAN_SERVER_UUID')
+			PerfData = self.PlanAPI.GetPerformanceOverview(ServerUUID) if ServerUUID else None
+			Embed, File = CreateStatusEmbed(Status, self.Host, self.Port, self.BotName, PerfData)
 			await interaction.response.edit_message(embed=Embed, view=self)
 		except Exception:
 			ErrorEmbed = discord.Embed(

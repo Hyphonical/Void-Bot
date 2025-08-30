@@ -1,63 +1,34 @@
 # 📦 Built-in modules
 import difflib
 import pathlib
-import os
+import time
 
 # 📥 Custom modules
 from Utils.Logger import Logger, logging, ConsoleHandler
-from Utils.Socket import GetStatus
+from Utils.Env import LoadEnv
 
 # ⚙️ Settings
 from Config import (
 	LogLevel,
 	Intents,
 	CommandPrefix,
-	DefaultServer,
-	DefaultServerPort,
-	PresenceUpdateInterval,
 	BlacklistedChannels,
 	BotName,
 	FuzzyMatchingThreshold,
+	MessageCooldown,
 )
 
 # 👾 Discord modules
-from discord.ext import commands, tasks
+from discord.ext import commands
 import discord
-
-
-# 🌱 Load environment variables from .env file
-def LoadEnv():
-	EnvDict = {}
-	try:
-		with open('.env', 'r') as File:
-			for Line in File:
-				if '=' in Line:
-					Key, Value = Line.strip().split('=', 1)
-					EnvDict[Key] = Value
-					os.environ[Key] = Value
-		return EnvDict
-	except FileNotFoundError:
-		# 🔄 Fallback to process environment when .env is missing
-		Keys = [
-			'DISCORD_BOT_TOKEN',
-			'PLAN_USER',
-			'PLAN_PASSWORD',
-			'PLAN_SERVER_UUID',
-		]
-		for Key in Keys:
-			Value = os.environ.get(Key)
-			if Value:
-				EnvDict[Key] = Value
-		if not EnvDict:
-			Logger.error('Error: .env file not found and no environment variables set.')
-			return None
-		return EnvDict
 
 
 class Bot(commands.Bot):
 	def __init__(self, *args, **kwargs):
 		super().__init__(*args, **kwargs)
 		self.remove_command('help')
+		# ⏱️ Track user cooldowns (user ID -> last message timestamp)
+		self.UserCooldowns = {}
 
 	async def setup_hook(self) -> None:
 		for Cog in pathlib.Path('Cogs').glob('*.py'):
@@ -72,24 +43,9 @@ class Bot(commands.Bot):
 	async def on_ready(self) -> None:
 		if self.user:
 			Logger.info(f'Logged in as {self.user.display_name} ({self.user.id})')
-			self.UpdatePresence.start()
 		else:
 			Logger.error('Failed to get bot user details')
 			return
-
-	@tasks.loop(seconds=PresenceUpdateInterval)
-	async def UpdatePresence(self):
-		try:
-			Status = GetStatus(DefaultServer, DefaultServerPort)
-			PlayersOnline = Status.get('players', {}).get('online', 0)
-			await self.change_presence(
-				status=discord.Status.idle if PlayersOnline == 0 else discord.Status.online,
-				activity=discord.Game(
-					name=f'Void Tales | {PlayersOnline} players',
-				),
-			)
-		except Exception as E:
-			Logger.warning(f'Failed to update presence: {str(E)}')
 
 	async def on_message(self, message: discord.Message) -> None:
 		if message.author == self.user:
@@ -102,6 +58,25 @@ class Bot(commands.Bot):
 			return
 		Channel = message.channel.name if isinstance(message.channel, discord.TextChannel) else 'DM'
 		Logger.info(f'[#{Channel}] Message from {message.author.display_name}: {message.content}')
+
+		# ⏱️ Check message cooldown
+		UserId = message.author.id
+		CurrentTime = time.time()
+		LastMessageTime = self.UserCooldowns.get(UserId, 0)
+		if CurrentTime - LastMessageTime < MessageCooldown:
+			# 📤 Send cooldown embed
+			RemainingTime = int(MessageCooldown - (CurrentTime - LastMessageTime))
+			Embed = discord.Embed(
+				title='Cooldown Active',
+				description=f'Please wait `{RemainingTime}` seconds before sending another message.',
+				color=0xF5A3A3,
+			)
+			Embed.set_footer(text=BotName)
+			await message.channel.send(embed=Embed, delete_after=20)
+			return
+		# 🔄 Update cooldown timestamp
+		self.UserCooldowns[UserId] = CurrentTime
+
 		await self.process_commands(message)
 
 	async def on_command_error(self, ctx, error):
@@ -131,9 +106,21 @@ class Bot(commands.Bot):
 				Embed.set_footer(text=BotName)
 				await ctx.send(embed=Embed)
 		elif isinstance(error, commands.MissingPermissions):
-			await ctx.send('You do not have permission to use this command.')
+				Embed = discord.Embed(
+					title='Missing Permissions',
+					description=f'You do not have permission to use the command `{CommandPrefix}{ctx.invoked_with}`.',
+					color=0xF5A3A3,
+				)
+				Embed.set_footer(text=BotName)
+				await ctx.send(embed=Embed)
 		elif isinstance(error, commands.BadArgument):
-			await ctx.send('Invalid argument provided.')
+			Embed = discord.Embed(
+				title='Bad Argument',
+				description=f'Invalid argument provided for command `{CommandPrefix}{ctx.invoked_with}`.',
+				color=0xF5A3A3,
+			)
+			Embed.set_footer(text=BotName)
+			await ctx.send(embed=Embed)
 		else:
 			# 🔄 Re-raise other errors for default handling
 			Logger.error(f'Unhandled error: {error}')
