@@ -77,6 +77,53 @@ def GetPingEmoji(Latency: float | None) -> str:
 		return '<:Ping6:1411342320955031664>'  # Low ping
 
 
+# 💡 Get emoji based on change from 30d to 24h (increase/decrease)
+def GetChangeEmoji(Current: str, Previous: str, IsIncreaseGood: bool = True) -> str:
+	# 📊 Parse values to floats
+	def ParseVal(Val: str) -> float | None:
+		Val = Val.strip()
+		if '%' in Val:
+			return float(Val.replace('%', ''))
+		if 'GB' in Val:
+			return float(Val.replace('GB', ''))
+		if 'h' in Val or 'm' in Val or 's' in Val:
+			# Parse downtime: e.g., "20h 43m 34s" -> seconds
+			Parts = Val.replace('h', ' ').replace('m', ' ').replace('s', '').split()
+			Seconds = 0.0
+			if len(Parts) >= 1:
+				Seconds += float(Parts[0]) * 3600  # hours
+			if len(Parts) >= 2:
+				Seconds += float(Parts[1]) * 60  # minutes
+			if len(Parts) >= 3:
+				Seconds += float(Parts[2])  # seconds
+			return Seconds
+		try:
+			return float(Val)
+		except ValueError:
+			return None
+
+	CurrentVal = ParseVal(Current)
+	PrevVal = ParseVal(Previous)
+	if CurrentVal is None or PrevVal is None:
+		return ''
+
+	IsIncrease = CurrentVal > PrevVal
+	if IsIncreaseGood:
+		# For good metrics (e.g., TPS, players), increase is good, decrease is bad
+		return (
+			'<:GreenIncrease:1411407181802115214>'
+			if IsIncrease
+			else '<:RedDecrease:1411407212374392842>'
+		)
+	else:
+		# For bad metrics (e.g., CPU, RAM, downtime), increase is bad, decrease is good
+		return (
+			'<:RedIncrease:1411409442502611005>'
+			if IsIncrease
+			else '<:GreenDecrease:1411409470315041009>'
+		)
+
+
 # 💡 Create status embed and file from server data
 def CreateStatusEmbed(
 	Status, Host: str, Port: int, BotName: str, PerfData: dict | None = None
@@ -93,16 +140,6 @@ def CreateStatusEmbed(
 	PingEmoji = GetPingEmoji(Latency)
 	LatencyText = f'{Latency:.0f}ms' if Latency is not None else 'Offline'
 
-	# 📈 Add performance data if available
-	PerfText = ''
-	if PerfData and 'numbers' in PerfData:
-		Numbers = PerfData['numbers']
-		Tps24h = Numbers.get('tps_24h', 'N/A')
-		Downtime24h = Numbers.get('server_downtime_24h', 'N/A')
-		Cpu24h = Numbers.get('cpu_24h', 'N/A')
-		Ram24h = Numbers.get('ram_24h', 'N/A')
-		PerfText = f'\nTPS (24h): `{Tps24h}`\nDowntime (24h): `{Downtime24h}`\nCPU (24h): `{Cpu24h}`\nRAM (24h): `{Ram24h}`'
-
 	Embed = discord.Embed(
 		title=f'Minecraft Server Status for {Host}:{Port}',
 		color=0xA0D6B4,
@@ -111,7 +148,7 @@ def CreateStatusEmbed(
 	Version: `{Version}`
 	Players: `{PlayersOnline}/{PlayersMax}`
 	Latency: `{LatencyText}` {PingEmoji}
-	Description: `{Description}`{PerfText}
+	Description: ```{Description}```
 	"""
 
 	# 🖼️ Add server logo if available
@@ -201,16 +238,13 @@ class Minecraft(commands.Cog):
 			color=0xA0D6B4,
 		)
 		Embed.description = f"""
-		TPS (24h): `{Numbers.get('tps_24h', 'N/A')}`
-		TPS (7d): `{Numbers.get('tps_7d', 'N/A')}`
-		TPS (30d): `{Numbers.get('tps_30d', 'N/A')}`
-		Downtime (24h): `{Numbers.get('server_downtime_24h', 'N/A')}`
-		Downtime (7d): `{Numbers.get('server_downtime_7d', 'N/A')}`
-		Downtime (30d): `{Numbers.get('server_downtime_30d', 'N/A')}`
-		CPU (24h): `{Numbers.get('cpu_24h', 'N/A')}`
-		RAM (24h): `{Numbers.get('ram_24h', 'N/A')}`
-		Entities (24h): `{Numbers.get('entities_24h', 'N/A')}`
-		Chunks (24h): `{Numbers.get('chunks_24h', 'N/A')}`
+		TPS (24h): `{Numbers.get('tps_24h', 'N/A')}` {GetChangeEmoji(Numbers.get('tps_24h', ''), Numbers.get('tps_30d', ''), True)}
+		Downtime (24h): `{Numbers.get('server_downtime_24h', 'N/A')}` {GetChangeEmoji(Numbers.get('server_downtime_24h', ''), Numbers.get('server_downtime_30d', ''), False)}
+		CPU (24h): `{Numbers.get('cpu_24h', 'N/A')}` {GetChangeEmoji(Numbers.get('cpu_24h', ''), Numbers.get('cpu_30d', ''), False)}
+		RAM (24h): `{Numbers.get('ram_24h', 'N/A')}` {GetChangeEmoji(Numbers.get('ram_24h', ''), Numbers.get('ram_30d', ''), False)}
+		Entities (24h): `{Numbers.get('entities_24h', 'N/A')}` {GetChangeEmoji(Numbers.get('entities_24h', ''), Numbers.get('entities_30d', ''), False)}
+		Chunks (24h): `{Numbers.get('chunks_24h', 'N/A')}` {GetChangeEmoji(Numbers.get('chunks_24h', ''), Numbers.get('chunks_30d', ''), False)}
+		Players (24h): `{Numbers.get('players_24h', 'N/A')}` {GetChangeEmoji(Numbers.get('players_24h', ''), Numbers.get('players_30d', ''), True)}
 		"""
 		Embed.set_footer(text=BotName)
 		await ctx.send(embed=Embed)

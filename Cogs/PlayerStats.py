@@ -22,7 +22,7 @@ class PlayerStats(commands.Cog):
 	@commands.hybrid_command(
 		name='playerstats',
 		description='Get player statistics from Plan API',
-		aliases=['stats', 'player', 'profile'],
+		aliases=['stats', 'player', 'profile', 'statistics', 'p'],
 	)
 	async def PlayerStats(self, ctx: commands.Context, name: str | None = None) -> None:
 		# 💡 If no name provided, use Discord display name
