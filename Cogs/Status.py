@@ -1,14 +1,16 @@
 # 📦 Built-in modules
-import struct
 import socket
+import struct
+import base64
 import json
-
-# ⚙️ Settings
-from Config import ProtocolVersion
+import io
 
 # 👾 Discord modules
 from discord.ext import commands
 import discord
+
+# ⚙️ Settings
+from Config import ProtocolVersion
 
 
 # 💡 Helper function to pack a varint
@@ -133,16 +135,29 @@ class Minecraft(commands.Cog):
 			PlayersOnline = Status.get('players', {}).get('online', 0)
 			PlayersMax = Status.get('players', {}).get('max', 0)
 			Description = FormatDescription(Status.get('description', 'No description'))
+			FaviconUrl = Status.get('favicon')
 
 			Embed = discord.Embed(
 				title=f'Minecraft Server Status for {host}:{port}',
-				color=0x00FF00,  # Green color for success
+				color=0xA0D6B4,
 			)
 			Embed.add_field(name='Version', value=Version, inline=True)
 			Embed.add_field(name='Players', value=f'{PlayersOnline}/{PlayersMax}', inline=True)
 			Embed.add_field(name='Description', value=Description, inline=False)
 
-			await ctx.send(embed=Embed)
+			# 🖼️ Add server logo if available
+			File = None
+			if FaviconUrl and ',' in FaviconUrl:
+				# Decode base64 and create file attachment
+				Base64Data = FaviconUrl.split(',', 1)[1]
+				ImageData = base64.b64decode(Base64Data)
+				ImageBuffer = io.BytesIO(ImageData)
+				ImageBuffer.seek(0)
+				File = discord.File(ImageBuffer, 'favicon.png')
+				Embed.set_thumbnail(url='attachment://favicon.png')
+				await ctx.send(embed=Embed, file=File)
+			else:
+				await ctx.send(embed=Embed)
 		except Exception as E:
 			await ctx.send(f'❌ Failed to fetch server status: {str(E)}')
 
