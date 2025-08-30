@@ -1,0 +1,23 @@
+# 📦 VCS and caches
+.git
+.ruff_cache
+__pycache__/
+*.py[cod]
+
+# 🧪 Virtual envs
+.venv
+venv
+ENV
+
+# 🔐 Local env/secrets
+.env
+.env.*
+!/.env.example
+
+# 🧱 Editor
+.vscode
+.idea
+
+# 🧳 Misc
+dist
+build

@@ -1,0 +1,11 @@
+---
+services:
+  void-bot:
+    # 🖼️ Image published by GitHub Actions
+    image: ghcr.io/hyphonical/void-bot:latest
+    # 🐳 Container name
+    container_name: VoidBot
+    restart: unless-stopped
+    # 🔑 Pass runtime configuration from your .env file
+    env_file:
+      - .env
