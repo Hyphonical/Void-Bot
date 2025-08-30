@@ -1,5 +1,4 @@
 # 📦 Built-in modules
-from typing import Dict
 import difflib
 import pathlib
 import os
@@ -27,7 +26,7 @@ import discord
 
 
 # 🌱 Load environment variables from .env file
-def LoadEnv() -> Dict[str, str]:
+def LoadEnv():
 	EnvDict = {}
 	try:
 		with open('.env', 'r') as File:
@@ -35,10 +34,23 @@ def LoadEnv() -> Dict[str, str]:
 				if '=' in Line:
 					Key, Value = Line.strip().split('=', 1)
 					EnvDict[Key] = Value
-					os.environ[Key] = Value
 		return EnvDict
 	except FileNotFoundError:
-		raise ValueError('No valid environment variables found.')
+		# 🔄 Fallback to process environment when .env is missing
+		Keys = [
+			'DISCORD_BOT_TOKEN',
+			'PLAN_USER',
+			'PLAN_PASSWORD',
+			'PLAN_SERVER_UUID',
+		]
+		for Key in Keys:
+			Value = os.environ.get(Key)
+			if Value:
+				EnvDict[Key] = Value
+		if not EnvDict:
+			Logger.error('Error: .env file not found and no environment variables set.')
+			return None
+		return EnvDict
 
 
 class Bot(commands.Bot):
@@ -163,10 +175,10 @@ DiscordLogger.propagate = False
 logging.getLogger('discord.http').setLevel(LogLevel)
 
 Env = LoadEnv()
-Token = Env.get('DISCORD_BOT_TOKEN')
-
-if Token is None:
-	raise ValueError('DISCORD_BOT_TOKEN is not set in environment variables.')
+Token = Env.get('DISCORD_BOT_TOKEN') if Env else None
+if not Token:
+	Logger.error('Error: Discord bot token not found in environment variables.')
+	exit(1)
 
 Instance = Bot(intents=Intents, command_prefix=CommandPrefix)
 Instance.run(
