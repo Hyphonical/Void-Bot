@@ -65,10 +65,10 @@ class Bot(commands.Bot):
 		LastMessageTime = self.UserCooldowns.get(UserId, 0)
 		if CurrentTime - LastMessageTime < MessageCooldown:
 			# 📤 Send cooldown embed
-			RemainingTime = int(MessageCooldown - (CurrentTime - LastMessageTime))
+			RemainingTime = float(MessageCooldown - (CurrentTime - LastMessageTime))
 			Embed = discord.Embed(
 				title='Cooldown Active',
-				description=f'Please wait `{RemainingTime}` seconds before sending another message.',
+				description=f'Please wait `{RemainingTime:.1f}` seconds before sending another message.',
 				color=0xF5A3A3,
 			)
 			Embed.set_footer(text=BotName)
@@ -78,6 +78,15 @@ class Bot(commands.Bot):
 		self.UserCooldowns[UserId] = CurrentTime
 
 		await self.process_commands(message)
+
+	@commands.Cog.listener()
+	async def on_command_completion(self, ctx: commands.Context) -> None:
+		# 🗑️ Delete the command message if it's a prefix command
+		if ctx.message:
+			try:
+				await ctx.message.delete()
+			except discord.Forbidden:
+				pass  # Ignore if bot lacks permissions
 
 	async def on_command_error(self, ctx, error):
 		if isinstance(error, commands.CommandNotFound):
@@ -106,13 +115,13 @@ class Bot(commands.Bot):
 				Embed.set_footer(text=BotName)
 				await ctx.send(embed=Embed)
 		elif isinstance(error, commands.MissingPermissions):
-				Embed = discord.Embed(
-					title='Missing Permissions',
-					description=f'You do not have permission to use the command `{CommandPrefix}{ctx.invoked_with}`.',
-					color=0xF5A3A3,
-				)
-				Embed.set_footer(text=BotName)
-				await ctx.send(embed=Embed)
+			Embed = discord.Embed(
+				title='Missing Permissions',
+				description=f'You do not have permission to use the command `{CommandPrefix}{ctx.invoked_with}`.',
+				color=0xF5A3A3,
+			)
+			Embed.set_footer(text=BotName)
+			await ctx.send(embed=Embed)
 		elif isinstance(error, commands.BadArgument):
 			Embed = discord.Embed(
 				title='Bad Argument',
