@@ -238,13 +238,13 @@ class Minecraft(commands.Cog):
 			color=0xA0D6B4,
 		)
 		Embed.description = f"""
-		TPS (24h): `{Numbers.get('tps_24h', 'N/A')}` {GetChangeEmoji(Numbers.get('tps_24h', ''), Numbers.get('tps_30d', ''), True)}
-		Downtime (24h): `{Numbers.get('server_downtime_24h', 'N/A')}` {GetChangeEmoji(Numbers.get('server_downtime_24h', ''), Numbers.get('server_downtime_30d', ''), False)}
-		CPU (24h): `{Numbers.get('cpu_24h', 'N/A')}` {GetChangeEmoji(Numbers.get('cpu_24h', ''), Numbers.get('cpu_30d', ''), False)}
-		RAM (24h): `{Numbers.get('ram_24h', 'N/A')}` {GetChangeEmoji(Numbers.get('ram_24h', ''), Numbers.get('ram_30d', ''), False)}
-		Entities (24h): `{Numbers.get('entities_24h', 'N/A')}` {GetChangeEmoji(Numbers.get('entities_24h', ''), Numbers.get('entities_30d', ''), False)}
-		Chunks (24h): `{Numbers.get('chunks_24h', 'N/A')}` {GetChangeEmoji(Numbers.get('chunks_24h', ''), Numbers.get('chunks_30d', ''), False)}
-		Players (24h): `{Numbers.get('players_24h', 'N/A')}` {GetChangeEmoji(Numbers.get('players_24h', ''), Numbers.get('players_30d', ''), True)}
+		TPS: `{Numbers.get('tps_24h', 'N/A')}` {GetChangeEmoji(Numbers.get('tps_24h', ''), Numbers.get('tps_30d', ''), True)}
+		Downtime: `{Numbers.get('server_downtime_24h', 'N/A')}` {GetChangeEmoji(Numbers.get('server_downtime_24h', ''), Numbers.get('server_downtime_30d', ''), False)}
+		CPU: `{Numbers.get('cpu_24h', 'N/A')}` {GetChangeEmoji(Numbers.get('cpu_24h', ''), Numbers.get('cpu_30d', ''), False)}
+		RAM: `{Numbers.get('ram_24h', 'N/A')}` {GetChangeEmoji(Numbers.get('ram_24h', ''), Numbers.get('ram_30d', ''), False)}
+		Entities: `{Numbers.get('entities_24h', 'N/A')}` {GetChangeEmoji(Numbers.get('entities_24h', ''), Numbers.get('entities_30d', ''), False)}
+		Chunks: `{Numbers.get('chunks_24h', 'N/A')}` {GetChangeEmoji(Numbers.get('chunks_24h', ''), Numbers.get('chunks_30d', ''), False)}
+		Players: `{Numbers.get('players_24h', 'N/A')}` {GetChangeEmoji(Numbers.get('players_24h', ''), Numbers.get('players_30d', ''), True)}
 		"""
 		Embed.set_footer(text=BotName)
 		await ctx.send(embed=Embed)
