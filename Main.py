@@ -59,23 +59,24 @@ class Bot(commands.Bot):
 		Channel = message.channel.name if isinstance(message.channel, discord.TextChannel) else 'DM'
 		Logger.info(f'[#{Channel}] Message from {message.author.display_name}: {message.content}')
 
-		# ⏱️ Check message cooldown
-		UserId = message.author.id
-		CurrentTime = time.time()
-		LastMessageTime = self.UserCooldowns.get(UserId, 0)
-		if CurrentTime - LastMessageTime < MessageCooldown:
-			# 📤 Send cooldown embed
-			RemainingTime = float(MessageCooldown - (CurrentTime - LastMessageTime))
-			Embed = discord.Embed(
-				title='Cooldown Active',
-				description=f'Please wait `{RemainingTime:.1f}` seconds before sending another message.',
-				color=0xF5A3A3,
-			)
-			Embed.set_footer(text=BotName)
-			await message.channel.send(embed=Embed, delete_after=20)
-			return
-		# 🔄 Update cooldown timestamp
-		self.UserCooldowns[UserId] = CurrentTime
+		# ⏱️ Check message cooldown only for commands
+		if message.content.startswith(CommandPrefix):
+			UserId = message.author.id
+			CurrentTime = time.time()
+			LastMessageTime = self.UserCooldowns.get(UserId, 0)
+			if CurrentTime - LastMessageTime < MessageCooldown:
+				# 📤 Send cooldown embed
+				RemainingTime = float(MessageCooldown - (CurrentTime - LastMessageTime))
+				Embed = discord.Embed(
+					title='Cooldown Active',
+					description=f'Please wait `{RemainingTime:.1f}` seconds before sending another message.',
+					color=0xF5A3A3,
+				)
+				Embed.set_footer(text=BotName)
+				await message.channel.send(embed=Embed, delete_after=20)
+				return
+			# 🔄 Update cooldown timestamp
+			self.UserCooldowns[UserId] = CurrentTime
 
 		await self.process_commands(message)
 
