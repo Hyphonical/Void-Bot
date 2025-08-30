@@ -3,6 +3,7 @@ import base64
 import io
 
 # 📥 Custom modules
+from Config import DefaultServer, DefaultServerPort
 from Utils.Socket import GetStatus
 
 # 👾 Discord modules
@@ -40,7 +41,13 @@ class Minecraft(commands.Cog):
 		self.Bot = Bot
 
 	@commands.hybrid_command(name='mcstatus', description='Get Minecraft server status')
-	async def MCStatus(self, ctx: commands.Context, host: str, port: int = 25565) -> None:
+	async def MCStatus(
+		self, ctx: commands.Context, host: str | None = None, port: int = 25565
+	) -> None:
+		if host is None:
+			host = DefaultServer
+		if port == 25565 and host == DefaultServer:
+			port = DefaultServerPort
 		try:
 			# 🌐 Fetch server status
 			Status = GetStatus(host, port)

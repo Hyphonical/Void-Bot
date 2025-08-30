@@ -17,16 +17,20 @@ class Highlighter(RegexHighlighter):
 	base_style = f'{__name__}.'
 	highlights = [
 		r'(?P<Url>https?://[^\s]+)',
-		r'(Session ID: (?P<SessionID>[0-9a-z]{32}))',
-		r'(Logged in as (?P<Login>.*?) \((?P<ID>[0-9]{19})\))',
-		r'(\[(?P<Channel>.*?)\] Message from (?P<User>.*?): (?P<Message>.*?))',
-		r'(Loading extension: (?P<Cog>Cogs\..*))',
+		r'Session ID: (?P<SessionID>[0-9a-z]{32})',
+		r'Logged in as (?P<Login>.*?) \((?P<ID>[0-9]{19})\)',
+		r'\[(?P<Channel>.*?)\]',
+		r'Message from (?P<User>.*?): (?P<SentMessage>.*?)',
+		r'Message edited by (?P<User>.*?): "(?P<OriginalMessage>.*?)" -> "(?P<EditedMessage>.*?)"',
+		r'Message deleted by (?P<User>.*?): "(?P<DeletedMessage>.*?)"',
+		r'Loading extension: (?P<Cog>Cogs\..*)',
 		rf'(?P<Command>{CommandPrefix}.*)',
 	]
 
 
 # 🌱 Initialize and define logging
 def InitLogging():
+	# 🎨 Pastel theme dictionary for log highlighting
 	ThemeDict = {
 		'log.time': 'bright_black',
 		'logging.level.debug': '#B3D7EC',
@@ -34,15 +38,18 @@ def InitLogging():
 		'logging.level.warning': '#F5D7A3',
 		'logging.level.error': '#F5A3A3',
 		'logging.level.critical': '#ffc6ff',
-		f'{__name__}.Url': 'yellow',
-		f'{__name__}.SessionID': 'green',
-		f'{__name__}.Login': 'blue',
-		f'{__name__}.ID': 'green',
-		f'{__name__}.Channel': 'yellow',
-		f'{__name__}.User': 'blue',
-		f'{__name__}.Message': 'italic underline',
-		f'{__name__}.Cog': 'magenta',
-		f'{__name__}.Command': 'cyan',
+		f'{__name__}.Url': '#F5D7A3',
+		f'{__name__}.SessionID': '#A0D6B4',
+		f'{__name__}.Login': '#B3D7EC',
+		f'{__name__}.ID': '#A0D6B4',
+		f'{__name__}.Channel': '#F5D7A3',
+		f'{__name__}.User': '#B3D7EC',
+		f'{__name__}.SentMessage': '#B3D7EC',
+		f'{__name__}.OriginalMessage': '#F5A3A3',
+		f'{__name__}.EditedMessage': '#A0D6B4',
+		f'{__name__}.DeletedMessage': '#F5A3A3',
+		f'{__name__}.Cog': '#e0bbff',
+		f'{__name__}.Command': '#b5ead7',
 	}
 	Console = RichConsole(
 		theme=Theme(ThemeDict),

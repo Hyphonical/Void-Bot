@@ -12,10 +12,10 @@ from Config import (
 	LogLevel,
 	Intents,
 	CommandPrefix,
-	Presence,
 	DefaultServer,
 	DefaultServerPort,
 	PresenceUpdateInterval,
+	BlacklistedChannels,
 )
 
 # 👾 Discord modules
@@ -62,27 +62,33 @@ class Bot(commands.Bot):
 	async def on_ready(self) -> None:
 		if self.user:
 			Logger.info(f'Logged in as {self.user.display_name} ({self.user.id})')
-			await self.change_presence(activity=Presence)
 			self.UpdatePresence.start()
 		else:
 			Logger.error('Failed to get bot user details')
 			return
 
-	# 🔄 Task to update presence with server stats
 	@tasks.loop(seconds=PresenceUpdateInterval)
 	async def UpdatePresence(self):
 		try:
 			Status = GetStatus(DefaultServer, DefaultServerPort)
 			PlayersOnline = Status.get('players', {}).get('online', 0)
 			await self.change_presence(
-				activity=discord.Game(name=f'Void Tales | {PlayersOnline} players')
+				status=discord.Status.idle if PlayersOnline == 0 else discord.Status.online,
+				activity=discord.Game(
+					name=f'Void Tales | {PlayersOnline} players',
+				),
 			)
 		except Exception as E:
 			Logger.warning(f'Failed to update presence: {str(E)}')
-			await self.change_presence(activity=Presence)  # Fallback to default
 
 	async def on_message(self, message: discord.Message) -> None:
 		if message.author == self.user:
+			return
+		# 🚫 Skip logging if channel is blacklisted
+		if (
+			isinstance(message.channel, discord.TextChannel)
+			and message.channel.id in BlacklistedChannels
+		):
 			return
 		Channel = message.channel.name if isinstance(message.channel, discord.TextChannel) else 'DM'
 		Logger.info(f'[#{Channel}] Message from {message.author.display_name}: {message.content}')
@@ -93,7 +99,7 @@ class Bot(commands.Bot):
 			Embed = discord.Embed(
 				title='Command Not Found',
 				description=f'The command `{ctx.invoked_with}` is not recognized.',
-				color=0xFF0000,
+				color=0xF5A3A3,
 			)
 			await ctx.send(embed=Embed)
 		elif isinstance(error, commands.MissingPermissions):
@@ -108,18 +114,30 @@ class Bot(commands.Bot):
 	async def on_message_edit(self, before: discord.Message, after: discord.Message) -> None:
 		# ✏️ Log message edits
 		if before.content != after.content:
+			# 🚫 Skip logging if channel is blacklisted
+			if (
+				isinstance(before.channel, discord.TextChannel)
+				and before.channel.id in BlacklistedChannels
+			):
+				return
 			Channel = (
 				before.channel.name if isinstance(before.channel, discord.TextChannel) else 'DM'
 			)
 			Logger.info(
-				f'Message edited in #{Channel} by {before.author.display_name}: "{before.content}" -> "{after.content}"'
+				f'[#{Channel}] Message edited by {before.author.display_name}: "{before.content}" -> "{after.content}"'
 			)
 
 	async def on_message_delete(self, message: discord.Message) -> None:
 		# 🗑️ Log message deletions
+		# 🚫 Skip logging if channel is blacklisted
+		if (
+			isinstance(message.channel, discord.TextChannel)
+			and message.channel.id in BlacklistedChannels
+		):
+			return
 		Channel = message.channel.name if isinstance(message.channel, discord.TextChannel) else 'DM'
 		Logger.info(
-			f'Message deleted in #{Channel} by {message.author.display_name}: "{message.content}"'
+			f'[#{Channel}] Message deleted by {message.author.display_name}: "{message.content}"'
 		)
 
 
