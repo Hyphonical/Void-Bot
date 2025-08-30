@@ -5,6 +5,11 @@ import discord
 from Config import DefaultServer, DefaultServerPort
 from Utils.Socket import GetStatus
 
+# ⚙️ Settings
+from Config import (
+	BotName,
+)
+
 # 👾 Discord modules
 from discord.ext import commands
 
@@ -38,6 +43,7 @@ class Players(commands.Cog):
 					description='There is currently no one online.',
 					color=0xF5A3A3,
 				)
+				Embed.set_footer(text=BotName)
 				await ctx.send(embed=Embed)
 			else:
 				# 📋 List players embed
@@ -50,6 +56,7 @@ class Players(commands.Cog):
 					description=PlayerList,
 					color=0xA0D6B4,
 				)
+				Embed.set_footer(text=BotName)
 				await ctx.send(embed=Embed)
 		except Exception:
 			Embed = discord.Embed(
@@ -57,6 +64,7 @@ class Players(commands.Cog):
 				description='Failed to fetch player list',
 				color=0xF5A3A3,
 			)
+			Embed.set_footer(text=BotName)
 			await ctx.send(embed=Embed)
 
 

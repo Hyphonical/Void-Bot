@@ -1,22 +1,49 @@
 # 📦 Built-in modules
 import urllib.request
+import urllib.parse
+import http.cookiejar
 import difflib
 import gzip
 import json
 import os
 from datetime import datetime
 
+# ⚙️ Settings
+from Config import FuzzyMatchingThreshold, BotName
+
 # 👾 Discord modules
 from discord.ext import commands
 import discord
-
-# ⚙️ Settings
-from Config import FuzzyMatchingThreshold, BotName
 
 
 class PlayerStats(commands.Cog):
 	def __init__(self, Bot: commands.Bot) -> None:
 		self.Bot = Bot
+		# 🍪 Cookie jar for auth
+		self.CookieJar = http.cookiejar.CookieJar()
+		self.Opener = urllib.request.build_opener(
+			urllib.request.HTTPCookieProcessor(self.CookieJar)
+		)
+
+	# 🔐 Login to get auth cookie
+	def Login(self) -> bool:
+		User = os.environ.get('PLAN_USER')
+		Password = os.environ.get('PLAN_PASSWORD')
+		if not User or not Password:
+			return False
+		LoginUrl = 'https://plan.voidtales.win/auth/login'
+		Data = urllib.parse.urlencode({'user': User, 'password': Password}).encode('utf-8')
+		Req = urllib.request.Request(LoginUrl, data=Data, method='POST')
+		Req.add_header('accept', 'application/json')
+		Req.add_header('Content-Type', 'application/x-www-form-urlencoded')
+		try:
+			with self.Opener.open(Req) as Response:
+				if Response.status == 200:
+					ResponseData = json.loads(Response.read().decode('utf-8'))
+					return ResponseData.get('success', False)
+		except Exception:
+			pass
+		return False
 
 	@commands.hybrid_command(
 		name='playerstats',
@@ -24,30 +51,57 @@ class PlayerStats(commands.Cog):
 		aliases=['stats', 'player', 'profile'],
 	)
 	async def PlayerStats(self, ctx: commands.Context, name: str | None = None) -> None:
+		# 💡 If no name provided, use Discord display name
+		if name is None:
+			name = ctx.author.display_name
+
 		# 🌐 Fetch environment variables
-		Auth = os.environ.get('PLAN_AUTH')
 		ServerUUID = os.environ.get('PLAN_SERVER_UUID')
-		if not Auth or not ServerUUID:
+		if not ServerUUID:
 			Embed = discord.Embed(
 				title='Error',
 				description='Environment variables are missing',
 				color=0xF5A3A3,
 			)
+			Embed.set_footer(text=BotName)
+			await ctx.send(embed=Embed)
+			return
+
+		# 🔐 Ensure login before API request
+		if not self.Login():
+			Embed = discord.Embed(
+				title='Error',
+				description='Authentication failed.',
+				color=0xF5A3A3,
+			)
+			Embed.set_footer(text=BotName)
 			await ctx.send(embed=Embed)
 			return
 
 		# 📡 Prepare API request
 		Url = f'https://plan.voidtales.win/v1/playersTable?server={ServerUUID}'
 		Req = urllib.request.Request(Url)
-		Req.add_header('Cookie', f'auth={Auth}')
+		Req.add_header('accept', 'application/json')
 
+		Status = None
 		try:
 			# 🔍 Fetch data from API
-			with urllib.request.urlopen(Req) as Response:
+			with self.Opener.open(Req) as Response:
+				Status = Response.status
+				if Status != 200:
+					Embed = discord.Embed(
+						title='Error',
+						description=f'API request failed with status {Status}.',
+						color=0xF5A3A3,
+					)
+					Embed.set_footer(text=BotName)
+					await ctx.send(embed=Embed)
+					return
 				RawData = Response.read()
 				if Response.headers.get('Content-Encoding') == 'gzip':
 					RawData = gzip.decompress(RawData)
-				Data = json.loads(RawData.decode('utf-8'))
+				DecodedData = RawData.decode('utf-8', errors='ignore')
+				Data = json.loads(DecodedData)
 
 			# 📊 Process and format player stats
 			Players = Data.get('players', [])
@@ -57,12 +111,9 @@ class PlayerStats(commands.Cog):
 					description='No player data available.',
 					color=0xF5A3A3,
 				)
+				Embed.set_footer(text=BotName)
 				await ctx.send(embed=Embed)
 				return
-
-			# 💡 If no name provided, use Discord display name
-			if name is None:
-				name = ctx.author.display_name
 
 			# 🔍 Fuzzy search for player
 			PlayerNames = [P.get('playerName', '') for P in Players]
@@ -75,6 +126,7 @@ class PlayerStats(commands.Cog):
 					description=f'No close match found for `{name}`.',
 					color=0xF5A3A3,
 				)
+				Embed.set_footer(text=BotName)
 				await ctx.send(embed=Embed)
 				return
 			MatchedName = Matches[0]
@@ -85,6 +137,7 @@ class PlayerStats(commands.Cog):
 					description=f'Player `{MatchedName}` not found.',
 					color=0xF5A3A3,
 				)
+				Embed.set_footer(text=BotName)
 				await ctx.send(embed=Embed)
 				return
 
@@ -136,12 +189,13 @@ class PlayerStats(commands.Cog):
 			)
 			Embed.set_footer(text=BotName)
 			await ctx.send(embed=Embed)
-		except Exception:
+		except Exception as E:
 			Embed = discord.Embed(
 				title='Error',
-				description=f'Failed to fetch player stats for `{name}`',
+				description=f'Failed to fetch player stats for `{name}`: {E}',
 				color=0xF5A3A3,
 			)
+			Embed.set_footer(text=BotName)
 			await ctx.send(embed=Embed)
 
 

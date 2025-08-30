@@ -1,5 +1,6 @@
 # 📦 Built-in modules
 from typing import Dict
+import difflib
 import pathlib
 import os
 
@@ -16,6 +17,8 @@ from Config import (
 	DefaultServerPort,
 	PresenceUpdateInterval,
 	BlacklistedChannels,
+	BotName,
+	FuzzyMatchingThreshold,
 )
 
 # 👾 Discord modules
@@ -41,6 +44,7 @@ def LoadEnv() -> Dict[str, str]:
 class Bot(commands.Bot):
 	def __init__(self, *args, **kwargs):
 		super().__init__(*args, **kwargs)
+		self.remove_command('help')
 
 	async def setup_hook(self) -> None:
 		for Cog in pathlib.Path('Cogs').glob('*.py'):
@@ -89,12 +93,30 @@ class Bot(commands.Bot):
 
 	async def on_command_error(self, ctx, error):
 		if isinstance(error, commands.CommandNotFound):
-			Embed = discord.Embed(
-				title='Command Not Found',
-				description=f'The command `{ctx.invoked_with}` is not recognized.',
-				color=0xF5A3A3,
+			# 🔍 Fuzzy search for similar commands
+			InvokedCommand = ctx.invoked_with
+			AllCommands = [Cmd.name for Cmd in self.commands]
+			AllCommands.extend([Alias for Cmd in self.commands for Alias in Cmd.aliases])
+			CloseMatches = difflib.get_close_matches(
+				InvokedCommand, AllCommands, n=1, cutoff=FuzzyMatchingThreshold
 			)
-			await ctx.send(embed=Embed)
+			if CloseMatches:
+				SuggestedCommand = CloseMatches[0]
+				Embed = discord.Embed(
+					title='Command Not Found',
+					description=f'Did you mean `{CommandPrefix}{SuggestedCommand}`? The command `{CommandPrefix}{InvokedCommand}` is not recognized.',
+					color=0xF5A3A3,
+				)
+				Embed.set_footer(text=BotName)
+				await ctx.send(embed=Embed)
+			else:
+				Embed = discord.Embed(
+					title='Command Not Found',
+					description=f'The command `{CommandPrefix}{InvokedCommand}` is not recognized.',
+					color=0xF5A3A3,
+				)
+				Embed.set_footer(text=BotName)
+				await ctx.send(embed=Embed)
 		elif isinstance(error, commands.MissingPermissions):
 			await ctx.send('You do not have permission to use this command.')
 		elif isinstance(error, commands.BadArgument):

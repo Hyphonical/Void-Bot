@@ -1,3 +1,8 @@
+# ⚙️ Settings
+from Config import (
+	BotName,
+)
+
 # 👾 Discord modules
 from discord.ext import commands
 import discord
@@ -16,6 +21,7 @@ class Ping(commands.Cog):
 			description=f'`{self.Bot.latency * 1000:.2f}ms`',
 			color=0xA0D6B4,
 		)
+		Embed.set_footer(text=BotName)
 		await ctx.send(embed=Embed)
 
 

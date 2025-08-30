@@ -79,6 +79,11 @@ def InitLogging():
 	Logger.addHandler(ConsoleHandler)
 	Logger.propagate = False
 
+	UrllibLogger = logging.getLogger('urllib.request')
+	UrllibLogger.setLevel(logging.DEBUG)
+	UrllibLogger.addHandler(ConsoleHandler)
+	UrllibLogger.propagate = False
+
 	return Console, Logger, ConsoleHandler
 
 
