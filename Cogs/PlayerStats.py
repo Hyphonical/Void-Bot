@@ -1,7 +1,7 @@
 # 📦 Built-in modules
 from datetime import datetime
-import json
 import difflib
+import json
 
 # 📥 Custom modules
 from Utils.Plan import PlanAPI

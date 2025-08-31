@@ -36,9 +36,7 @@ class Bot(commands.Bot):
 				continue
 			Logger.info(f'• Loading extension: {Cog.stem}')
 			await self.load_extension(f'Cogs.{Cog.stem}')
-		Logger.info('• Syncing application commands...')
-		await self.tree.sync()
-		Logger.info('• Done loading Cogs.')
+		Logger.info('Done loading Cogs.')
 
 	async def on_ready(self) -> None:
 		if self.user:
@@ -46,6 +44,14 @@ class Bot(commands.Bot):
 		else:
 			Logger.error('Failed to get bot user details')
 			return
+		Logger.info('Syncing application commands...')
+		for Guild in self.guilds:
+			Logger.info(f'• Syncing commands for guild: {Guild.name} ({Guild.id})')
+			try:
+				await self.tree.sync(guild=Guild)
+			except Exception as E:
+				Logger.error(f'• Failed to sync commands for guild {Guild.id}: {E}')
+		Logger.info('Done syncing application commands.')
 
 	async def on_message(self, message: discord.Message) -> None:
 		if message.author == self.user:
@@ -88,6 +94,8 @@ class Bot(commands.Bot):
 				await ctx.message.delete()
 			except discord.Forbidden:
 				pass  # Ignore if bot lacks permissions
+			except discord.NotFound:
+				pass
 
 	async def on_command_error(self, ctx, error):
 		if isinstance(error, commands.CommandNotFound):
@@ -123,6 +131,12 @@ class Bot(commands.Bot):
 			)
 			Embed.set_footer(text=BotName)
 			await ctx.send(embed=Embed)
+		elif isinstance(error, commands.MissingRequiredArgument):
+			Embed = discord.Embed(
+				title='Missing Required Argument',
+				description=f'The command `{CommandPrefix}{ctx.invoked_with}` is missing a required argument.',
+				color=0xF5A3A3,
+			)
 		elif isinstance(error, commands.BadArgument):
 			Embed = discord.Embed(
 				title='Bad Argument',

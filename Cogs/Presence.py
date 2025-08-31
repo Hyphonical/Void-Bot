@@ -14,14 +14,14 @@ import discord
 
 
 class Presence(commands.Cog):
-	def __init__(self, bot: commands.Bot) -> None:
-		self.bot = bot
+	def __init__(self, Bot: commands.Bot) -> None:
+		self.Bot = Bot
 
 	@tasks.loop(seconds=PresenceUpdateInterval)
 	async def update_presence(self):
 		Status = GetStatus(DefaultServer, DefaultServerPort)
 		PlayersOnline = Status.get('players', {}).get('online', 0)
-		await self.bot.change_presence(
+		await self.Bot.change_presence(
 			status=discord.Status.idle if PlayersOnline == 0 else discord.Status.online,
 			activity=discord.Game(
 				name=f'Void Tales | {PlayersOnline} players',
@@ -33,5 +33,5 @@ class Presence(commands.Cog):
 		self.update_presence.start()
 
 
-async def setup(bot: commands.Bot) -> None:
-	await bot.add_cog(Presence(bot))
+async def setup(Bot: commands.Bot) -> None:
+	await Bot.add_cog(Presence(Bot))
