@@ -22,6 +22,7 @@ class Help(commands.Cog):
 		# 📋 Build dynamic help embed with categories
 		Embed = discord.Embed(
 			title='Bot Commands',
+			timestamp=discord.utils.utcnow(),
 			color=0xA0D6B4,
 		)
 		Embed.set_footer(text=BotName)

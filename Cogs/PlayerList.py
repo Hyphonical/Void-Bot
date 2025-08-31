@@ -40,6 +40,7 @@ class Players(commands.Cog):
 				# ❌ Fail embed for no players
 				Embed = discord.Embed(
 					title='No Players Online',
+					timestamp=discord.utils.utcnow(),
 					description='There is currently no one online.',
 					color=0xF5A3A3,
 				)
@@ -53,6 +54,7 @@ class Players(commands.Cog):
 				)
 				Embed = discord.Embed(
 					title=f'Online Players ({PlayersOnline})',
+					timestamp=discord.utils.utcnow(),
 					description=PlayerList,
 					color=0xA0D6B4,
 				)
@@ -61,6 +63,7 @@ class Players(commands.Cog):
 		except Exception:
 			Embed = discord.Embed(
 				title='Error',
+				timestamp=discord.utils.utcnow(),
 				description='Failed to fetch player list',
 				color=0xF5A3A3,
 			)

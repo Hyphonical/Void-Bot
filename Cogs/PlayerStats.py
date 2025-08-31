@@ -1,5 +1,4 @@
 # 📦 Built-in modules
-from datetime import datetime
 import difflib
 import json
 
@@ -50,6 +49,7 @@ class PlayerStats(commands.Cog):
 		if not ServerUUID:
 			Embed = discord.Embed(
 				title='Error',
+				timestamp=discord.utils.utcnow(),
 				description='Environment variables are missing',
 				color=0xF5A3A3,
 			)
@@ -62,6 +62,7 @@ class PlayerStats(commands.Cog):
 		if not Player:
 			Embed = discord.Embed(
 				title='Error',
+				timestamp=discord.utils.utcnow(),
 				description=f'No data found for `{name}`.',
 				color=0xF5A3A3,
 			)
@@ -102,7 +103,7 @@ class PlayerStats(commands.Cog):
 		# 🎨 Create detailed embed
 		Embed = discord.Embed(
 			title=f'Player Stats: {Player.get("playerName", name)}',
-			timestamp=datetime.now(),
+			timestamp=discord.utils.utcnow(),
 			color=0xA0D6B4,
 		)
 		Embed.description = f"""

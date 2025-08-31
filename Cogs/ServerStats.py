@@ -142,6 +142,7 @@ def CreateStatusEmbed(
 
 	Embed = discord.Embed(
 		title=f'Minecraft Server Status for {Host}:{Port}',
+		timestamp=discord.utils.utcnow(),
 		color=0xA0D6B4,
 	)
 	Embed.description = f"""
@@ -200,6 +201,7 @@ class Minecraft(commands.Cog):
 		except Exception:
 			Embed = discord.Embed(
 				title='Error',
+				timestamp=discord.utils.utcnow(),
 				description='Failed to fetch server status',
 				color=0xF5A3A3,
 			)
@@ -216,6 +218,7 @@ class Minecraft(commands.Cog):
 		if not ServerUUID:
 			Embed = discord.Embed(
 				title='Error',
+				timestamp=discord.utils.utcnow(),
 				description='Environment variables are missing',
 				color=0xF5A3A3,
 			)
@@ -226,6 +229,7 @@ class Minecraft(commands.Cog):
 		if not PerfData or 'numbers' not in PerfData:
 			Embed = discord.Embed(
 				title='Error',
+				timestamp=discord.utils.utcnow(),
 				description='Failed to fetch performance data',
 				color=0xF5A3A3,
 			)
@@ -235,6 +239,7 @@ class Minecraft(commands.Cog):
 		Numbers = PerfData['numbers']
 		Embed = discord.Embed(
 			title='Server Performance Overview',
+			timestamp=discord.utils.utcnow(),
 			color=0xA0D6B4,
 		)
 		Embed.description = f"""
@@ -273,6 +278,7 @@ class RefreshView(View):
 		except Exception:
 			ErrorEmbed = discord.Embed(
 				title='Error',
+				timestamp=discord.utils.utcnow(),
 				description='Failed to fetch server status',
 				color=0xF5A3A3,
 			)

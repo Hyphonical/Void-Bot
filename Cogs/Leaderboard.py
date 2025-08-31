@@ -25,6 +25,7 @@ class Leaderboard(commands.Cog):
 		if not ServerUUID:
 			Embed = discord.Embed(
 				title='Error',
+				timestamp=discord.utils.utcnow(),
 				description='Environment variables are missing',
 				color=0xF5A3A3,
 			)
@@ -37,6 +38,7 @@ class Leaderboard(commands.Cog):
 		if not Data or 'players' not in Data:
 			Embed = discord.Embed(
 				title='Error',
+				timestamp=discord.utils.utcnow(),
 				description='Failed to fetch player data.',
 				color=0xF5A3A3,
 			)
@@ -48,6 +50,7 @@ class Leaderboard(commands.Cog):
 		if not Players:
 			Embed = discord.Embed(
 				title='Error',
+				timestamp=discord.utils.utcnow(),
 				description='No players found.',
 				color=0xF5A3A3,
 			)
@@ -75,6 +78,7 @@ class Leaderboard(commands.Cog):
 		# 🎨 Create embed
 		Embed = discord.Embed(
 			title='Top 10 Most Active Players',
+			timestamp=discord.utils.utcnow(),
 			description=LeaderboardText,
 			color=0xA0D6B4,
 		)

@@ -75,6 +75,7 @@ class Bot(commands.Bot):
 				RemainingTime = float(MessageCooldown - (CurrentTime - LastMessageTime))
 				Embed = discord.Embed(
 					title='Cooldown Active',
+					timestamp=discord.utils.utcnow(),
 					description=f'Please wait `{RemainingTime:.1f}` seconds before sending another message.',
 					color=0xF5A3A3,
 				)
@@ -110,6 +111,7 @@ class Bot(commands.Bot):
 				SuggestedCommand = CloseMatches[0]
 				Embed = discord.Embed(
 					title='Command Not Found',
+					timestamp=discord.utils.utcnow(),
 					description=f'Did you mean `{CommandPrefix}{SuggestedCommand}`? The command `{CommandPrefix}{InvokedCommand}` is not recognized.',
 					color=0xF5A3A3,
 				)
@@ -118,6 +120,7 @@ class Bot(commands.Bot):
 			else:
 				Embed = discord.Embed(
 					title='Command Not Found',
+					timestamp=discord.utils.utcnow(),
 					description=f'The command `{CommandPrefix}{InvokedCommand}` is not recognized.',
 					color=0xF5A3A3,
 				)
@@ -126,6 +129,7 @@ class Bot(commands.Bot):
 		elif isinstance(error, commands.MissingPermissions):
 			Embed = discord.Embed(
 				title='Missing Permissions',
+				timestamp=discord.utils.utcnow(),
 				description=f'You do not have permission to use the command `{CommandPrefix}{ctx.invoked_with}`.',
 				color=0xF5A3A3,
 			)
@@ -134,12 +138,14 @@ class Bot(commands.Bot):
 		elif isinstance(error, commands.MissingRequiredArgument):
 			Embed = discord.Embed(
 				title='Missing Required Argument',
+				timestamp=discord.utils.utcnow(),
 				description=f'The command `{CommandPrefix}{ctx.invoked_with}` is missing a required argument.',
 				color=0xF5A3A3,
 			)
 		elif isinstance(error, commands.BadArgument):
 			Embed = discord.Embed(
 				title='Bad Argument',
+				timestamp=discord.utils.utcnow(),
 				description=f'Invalid argument provided for command `{CommandPrefix}{ctx.invoked_with}`.',
 				color=0xF5A3A3,
 			)

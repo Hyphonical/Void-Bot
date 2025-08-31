@@ -34,6 +34,7 @@ class Ping(commands.Cog):
 	async def Ping(self, ctx: commands.Context) -> None:
 		Embed = discord.Embed(
 			title='Latency',
+			timestamp=discord.utils.utcnow(),
 			description=f'`{self.Bot.latency * 1000:.2f}ms` {GetPingEmoji(self.Bot.latency * 1000)}',
 			color=0xA0D6B4,
 		)
