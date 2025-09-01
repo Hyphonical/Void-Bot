@@ -1,7 +1,7 @@
 # 📦 Built-in modules
 from pathlib import Path
-import glob
 import difflib
+import glob
 
 # 📥 Custom modules
 from PIL.Image import Resampling
