@@ -6,12 +6,13 @@ from datetime import datetime
 
 GALLERY_URL = "https://gallery.voidtales.win/images.json"
 BASE_URL = "https://gallery.voidtales.win"
-PER_PAGE = 3  # Number of images displayed per page
+PER_PAGE = 1  # Changed to 1 image per page for better overview
 
-def make_gallery_embeds(images, page, per_page):
+def make_gallery_embeds(images, page, per_page, author=None):
     """
     Creates a list of Discord embeds for the images on the current page.
-    Each image gets its own embed with a thumbnail and a link to the gallery.
+    Each page shows one image with a full-size preview.
+    If author is specified, include it in the title to indicate filtered images.
     """
     start = (page - 1) * per_page
     end = start + per_page
@@ -19,17 +20,21 @@ def make_gallery_embeds(images, page, per_page):
     embeds = []
 
     max_page = (len(images) - 1) // per_page + 1
-    # Header embed showing the current page and total pages
+    # Header embed showing the current page and total pages, with author if filtered
+    title = f"🖼️ VoidTales Gallery"
+    if author:
+        title += f" - Images by {author}"
+    title += f" Page {page}/{max_page}"
     header_embed = discord.Embed(
-        title=f"🖼️ VoidTales Gallery Page {page}/{max_page}",
+        title=title,
         color=0xA0D6B4
     )
     embeds.append(header_embed)
 
-    for img in page_images:
+    for img in page_images:  # Now only one image per page
         img_id = img.get("id", "")
-        # Construct the thumbnail URL based on the image ID
-        thumb_url = f"{BASE_URL}/images/thumbs/{img_id}-200.webp"
+        # Use the full image URL for display
+        url = img["imageUrl"] if img["imageUrl"].startswith("http") else BASE_URL + img["imageUrl"]
         # Link to the gallery page for this image
         gallery_link = f"{BASE_URL}/#img-{img_id}"
         embed = discord.Embed(
@@ -40,22 +45,51 @@ def make_gallery_embeds(images, page, per_page):
         # Add caption if available
         if img.get("caption"):
             embed.add_field(name="Caption", value=img["caption"], inline=False)
-        # Set the thumbnail image
-        embed.set_thumbnail(url=thumb_url)
+        # Set the full-size image
+        embed.set_image(url=url)
         embed.set_footer(text=f"ID: {img_id}")
         embeds.append(embed)
     return embeds
 
+class GoToPageModal(discord.ui.Modal):
+    """
+    Modal for entering a page number to jump to.
+    """
+    def __init__(self, view: 'GalleryView'):
+        super().__init__(title="Go to Page")
+        self.view = view
+        self.page_input = discord.ui.TextInput(
+            label="Enter page number",
+            placeholder=f"1 to {view.max_page}",
+            required=True,
+            max_length=10
+        )
+        self.add_item(self.page_input)
+
+    async def on_submit(self, interaction: discord.Interaction):
+        try:
+            page = int(self.page_input.value)
+            if 1 <= page <= self.view.max_page:
+                self.view.page = page
+                self.view.update_buttons()
+                embeds = make_gallery_embeds(self.view.images, self.view.page, self.view.per_page, self.view.author)
+                await interaction.response.edit_message(embeds=embeds, view=self.view)
+            else:
+                await interaction.response.send_message(f"Invalid page number. Please enter a number between 1 and {self.view.max_page}.", ephemeral=True)
+        except ValueError:
+            await interaction.response.send_message("Please enter a valid number.", ephemeral=True)
+
 class GalleryView(discord.ui.View):
     """
     Discord UI View for gallery navigation.
-    Provides Previous and Next buttons to paginate through images.
+    Provides Previous, Next, Switch View, and Go to Page buttons.
     """
-    def __init__(self, images, page=1, per_page=PER_PAGE):
+    def __init__(self, images, page=1, per_page=PER_PAGE, author=None):
         super().__init__(timeout=60)
         self.images = images
         self.page = page
         self.per_page = per_page
+        self.author = author  # Store author for title updates
         self.max_page = (len(images) - 1) // per_page + 1
         self.update_buttons()
 
@@ -65,28 +99,49 @@ class GalleryView(discord.ui.View):
         """
         self.children[0].disabled = self.page <= 1
         self.children[1].disabled = self.page >= self.max_page
+        # Other buttons are always enabled
 
     @discord.ui.button(label="⏮️ Previous", style=discord.ButtonStyle.primary, row=0)
     async def previous(self, interaction: discord.Interaction, button: discord.ui.Button):
         """
-        Go to the previous page when the Previous button is clicked.
+        Go to the previous page.
         """
         if self.page > 1:
             self.page -= 1
             self.update_buttons()
-            embeds = make_gallery_embeds(self.images, self.page, self.per_page)
+            embeds = make_gallery_embeds(self.images, self.page, self.per_page, self.author)
             await interaction.response.edit_message(embeds=embeds, view=self)
 
     @discord.ui.button(label="Next ⏭️", style=discord.ButtonStyle.primary, row=0)
     async def next(self, interaction: discord.Interaction, button: discord.ui.Button):
         """
-        Go to the next page when the Next button is clicked.
+        Go to the next page.
         """
         if self.page < self.max_page:
             self.page += 1
             self.update_buttons()
-            embeds = make_gallery_embeds(self.images, self.page, self.per_page)
+            embeds = make_gallery_embeds(self.images, self.page, self.per_page, self.author)
             await interaction.response.edit_message(embeds=embeds, view=self)
+
+    @discord.ui.button(label="🔄 Switch View", style=discord.ButtonStyle.secondary, row=0)
+    async def switch_view(self, interaction: discord.Interaction, button: discord.ui.Button):
+        """
+        Switch between single image view (1 per page) and multi-image view (3 per page).
+        """
+        self.per_page = 3 if self.per_page == 1 else 1
+        self.max_page = (len(self.images) - 1) // self.per_page + 1
+        self.page = max(1, min(self.page, self.max_page))
+        self.update_buttons()
+        embeds = make_gallery_embeds(self.images, self.page, self.per_page, self.author)
+        await interaction.response.edit_message(embeds=embeds, view=self)
+
+    @discord.ui.button(label="📄 Go to Page", style=discord.ButtonStyle.secondary, row=0)
+    async def go_to_page(self, interaction: discord.Interaction, button: discord.ui.Button):
+        """
+        Open a modal to jump to a specific page.
+        """
+        modal = GoToPageModal(self)
+        await interaction.response.send_modal(modal)
 
 class Gallery(commands.Cog):
     """
@@ -114,7 +169,7 @@ class Gallery(commands.Cog):
     @commands.hybrid_command(
         name="gallery",
         description="Shows images from the Void Tales Gallery",
-        aliases=["images"]
+        aliases=["images"]  # Removed "gallery-test" alias
     )
     @app_commands.describe(
         page_or_author="Page number or author name (optional)",
@@ -178,8 +233,8 @@ class Gallery(commands.Cog):
         # Clamp page to valid range to avoid errors
         page = max(1, min(page, max_page))
 
-        embeds = make_gallery_embeds(images, page, PER_PAGE)
-        view = GalleryView(images, page, PER_PAGE)
+        embeds = make_gallery_embeds(images, page, PER_PAGE, author)
+        view = GalleryView(images, page, PER_PAGE, author)
 
         if isinstance(ctx, commands.Context):
             await ctx.send(embeds=embeds, view=view)
