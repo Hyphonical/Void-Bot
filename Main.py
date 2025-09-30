@@ -46,13 +46,14 @@ class Bot(commands.Bot):
 			return
 		Logger.info('Syncing application commands...')
 		Logger.info(f'Global commands before sync: {[cmd.name for cmd in self.tree.get_commands()]}')  # 🐛 Debug: Global commands
-		for Guild in self.guilds:
-			Logger.info(f'• Syncing commands for guild: {Guild.name} ({Guild.id})')
-			try:
-				await self.tree.sync(guild=Guild)
-				Logger.info(f'Guild commands after sync for {Guild.id}: {[cmd.name for cmd in self.tree.get_commands(guild=Guild)]}')  # 🐛 Debug: Guild-specific commands
-			except Exception as E:
-				Logger.error(f'• Failed to sync commands for guild {Guild.id}: {E}')
+		await self.tree.sync()
+		# for Guild in self.guilds:
+		# 	Logger.info(f'• Syncing commands for guild: {Guild.name} ({Guild.id})')
+		# 	try:
+		# 		await self.tree.sync(guild=Guild)
+		# 		Logger.info(f'Guild commands after sync for {Guild.id}: {[cmd.name for cmd in self.tree.get_commands(guild=Guild)]}')  # 🐛 Debug: Guild-specific commands
+		# 	except Exception as E:
+		# 		Logger.error(f'• Failed to sync commands for guild {Guild.id}: {E}')
 		Logger.info('Done syncing application commands.')
 
 	async def on_message(self, message: discord.Message) -> None:
