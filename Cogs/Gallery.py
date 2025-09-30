@@ -3,6 +3,7 @@ from discord.ext import commands
 from discord import app_commands
 import aiohttp
 from datetime import datetime
+from Utils.Logger import Logger  # Import Logger from Utils
 
 GALLERY_URL = "https://gallery.voidtales.win/images.json"
 BASE_URL = "https://gallery.voidtales.win"
@@ -37,9 +38,19 @@ def make_gallery_embeds(images, page, per_page, author=None):
         url = img["imageUrl"] if img["imageUrl"].startswith("http") else BASE_URL + img["imageUrl"]
         # Link to the gallery page for this image
         gallery_link = f"{BASE_URL}/#img-{img_id}"
+        # Format date to human-readable with AM/PM
+        date_str = img.get('date', '')
+        if date_str:
+            try:
+                dt = datetime.fromisoformat(date_str)
+                formatted_date = dt.strftime("%B %d, %Y at %I:%M %p")
+            except Exception:
+                formatted_date = 'Unknown'
+        else:
+            formatted_date = 'Unknown'
         embed = discord.Embed(
-            title=img.get("title", "Image"),
-            description=f'by {img.get("author", "Unknown")}\n[Open in Gallery]({gallery_link})',
+            title=f"Title: {img.get('title', 'Image')}",
+            description=f'Author: {img.get("author", "Unknown")}\n[Open in Gallery]({gallery_link})',
             color=0xA0D6B4,
         )
         # Add caption if available
@@ -47,7 +58,7 @@ def make_gallery_embeds(images, page, per_page, author=None):
             embed.add_field(name="Caption", value=img["caption"], inline=False)
         # Set the full-size image
         embed.set_image(url=url)
-        embed.set_footer(text=f"ID: {img_id}")
+        embed.set_footer(text=f"ID: {img_id} - Date: {formatted_date}")
         embeds.append(embed)
     return embeds
 
@@ -169,7 +180,7 @@ class Gallery(commands.Cog):
     @commands.hybrid_command(
         name="gallery",
         description="Shows images from the Void Tales Gallery",
-        aliases=["images"]  # Removed "gallery-test" alias
+        aliases=["images", "gallery-test"]  # Added "gallery-test" alias for testing
     )
     @app_commands.describe(
         page_or_author="Page number or author name (optional)",
@@ -183,7 +194,11 @@ class Gallery(commands.Cog):
         !gallery hyphonical        -> first page, only author 'hyphonical'
         !gallery 2 hyphonical      -> page 2, only author 'hyphonical'
         !gallery hyphonical 2      -> page 2, only author 'hyphonical'
+        !gallery-test              -> same as !gallery
         """
+        # Log the usage with [Gallery] for highlighting
+        Logger.info('[Gallery] command used by %s (ID: %s) with args: page_or_author=%s, author=%s', ctx.author, ctx.author.id, page_or_author, author)
+
         images = await self.get_images()
 
         # Sort images by ISO date string, newest first

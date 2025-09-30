@@ -25,6 +25,7 @@ class Highlighter(RegexHighlighter):
 		r'Message deleted by (?P<User>.*?): "(?P<DeletedMessage>.*?)"',
 		r'Loading extension: (?P<Cog>.*)',
 		rf'(?P<Command>{CommandPrefix}.*)',
+		r'\[(?P<Gallery>Gallery)\]', # Highlight "Gallery" in square brackets
 	]
 
 
@@ -50,6 +51,7 @@ def InitLogging():
 		f'{__name__}.DeletedMessage': '#F5A3A3',
 		f'{__name__}.Cog': '#e0bbff',
 		f'{__name__}.Command': '#b5ead7',
+		f'{__name__}.Gallery': '#ff69b4',  # Hot Pink for Gallery logs
 	}
 	Console = RichConsole(
 		theme=Theme(ThemeDict),
