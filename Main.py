@@ -48,7 +48,7 @@ class Bot(commands.Bot):
 		for Guild in self.guilds:
 			Logger.info(f'• Syncing commands for guild: {Guild.name} ({Guild.id})')
 			try:
-				await self.tree.sync(guild=Guild)
+				await self.tree.sync()
 			except Exception as E:
 				Logger.error(f'• Failed to sync commands for guild {Guild.id}: {E}')
 		Logger.info('Done syncing application commands.')

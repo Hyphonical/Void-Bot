@@ -1,16 +1,31 @@
+# 👾 Discord modules
 import discord
 from discord.ext import commands
 from discord import app_commands
+
+# 🌐 Web modules
 import aiohttp
+
+# 🗓️ Date modules
 from datetime import datetime
+
+# 📥 Custom modules
+from Utils.Logger import Logger
+
+# 🔍 Fuzzy matching
+import difflib
+
+# ⚙️ Settings
+from Config import FuzzyMatchingThreshold, BotName
 
 GALLERY_URL = "https://gallery.voidtales.win/images.json"
 BASE_URL = "https://gallery.voidtales.win"
-PER_PAGE = 1  # Changed to 1 image per page for better overview
+PER_PAGE = 1  # 🖼️ Changed to 1 image per page for better overview
 
+# 🖼️ Create embeds for gallery images
 def make_gallery_embeds(images, page, per_page, author=None):
     """
-    Creates a list of Discord embeds for the images on the current page.
+    📦 Creates a list of Discord embeds for the images on the current page.
     Each page shows one image with a full-size preview.
     If author is specified, include it in the title to indicate filtered images.
     """
@@ -20,7 +35,7 @@ def make_gallery_embeds(images, page, per_page, author=None):
     embeds = []
 
     max_page = (len(images) - 1) // per_page + 1
-    # Header embed showing the current page and total pages, with author if filtered
+    # 🏷️ Header embed showing the current page and total pages, with author if filtered
     title = f"🖼️ VoidTales Gallery"
     if author:
         title += f" - Images by {author}"
@@ -31,29 +46,41 @@ def make_gallery_embeds(images, page, per_page, author=None):
     )
     embeds.append(header_embed)
 
-    for img in page_images:  # Now only one image per page
+    for img in page_images:  # Only one image per page
         img_id = img.get("id", "")
-        # Use the full image URL for display
+        # 🌐 Use the full image URL for display
         url = img["imageUrl"] if img["imageUrl"].startswith("http") else BASE_URL + img["imageUrl"]
-        # Link to the gallery page for this image
+        # 🔗 Link to the gallery page for this image
         gallery_link = f"{BASE_URL}/#img-{img_id}"
+        # 🗓️ Format date to human-readable with AM/PM
+        date_str = img.get('date', '')
+        if date_str:
+            try:
+                dt = datetime.fromisoformat(date_str)
+                formatted_date = dt.strftime("%B %d, %Y at %I:%M %p")
+            except Exception:
+                formatted_date = 'Unknown'
+        else:
+            formatted_date = 'Unknown'
         embed = discord.Embed(
-            title=img.get("title", "Image"),
-            description=f'by {img.get("author", "Unknown")}\n[Open in Gallery]({gallery_link})',
+            title=f"Title: {img.get('title', 'Image')}",
+            description=f'Author: {img.get("author", "Unknown")}\n[Open in Gallery]({gallery_link})',
             color=0xA0D6B4,
         )
-        # Add caption if available
+        # 📝 Add caption if available
         if img.get("caption"):
             embed.add_field(name="Caption", value=img["caption"], inline=False)
-        # Set the full-size image
+        # 🖼️ Set the full-size image
         embed.set_image(url=url)
-        embed.set_footer(text=f"ID: {img_id}")
+        # 🏷️ Add ID, date, and bot name to footer
+        embed.set_footer(text=f"ID: {img_id} — Date: {formatted_date} — {BotName}")
         embeds.append(embed)
     return embeds
 
+# 📄 Modal for jumping to a specific page
 class GoToPageModal(discord.ui.Modal):
     """
-    Modal for entering a page number to jump to.
+    📄 Modal for entering a page number to jump to.
     """
     def __init__(self, view: 'GalleryView'):
         super().__init__(title="Go to Page")
@@ -79,9 +106,10 @@ class GoToPageModal(discord.ui.Modal):
         except ValueError:
             await interaction.response.send_message("Please enter a valid number.", ephemeral=True)
 
+# 🎛️ Gallery navigation view with buttons
 class GalleryView(discord.ui.View):
     """
-    Discord UI View for gallery navigation.
+    🎛️ Discord UI View for gallery navigation.
     Provides Previous, Next, Switch View, and Go to Page buttons.
     """
     def __init__(self, images, page=1, per_page=PER_PAGE, author=None):
@@ -95,7 +123,7 @@ class GalleryView(discord.ui.View):
 
     def update_buttons(self):
         """
-        Enable or disable navigation buttons depending on the current page.
+        🔄 Enable or disable navigation buttons depending on the current page.
         """
         self.children[0].disabled = self.page <= 1
         self.children[1].disabled = self.page >= self.max_page
@@ -104,7 +132,7 @@ class GalleryView(discord.ui.View):
     @discord.ui.button(label="⏮️ Previous", style=discord.ButtonStyle.primary, row=0)
     async def previous(self, interaction: discord.Interaction, button: discord.ui.Button):
         """
-        Go to the previous page.
+        ⏮️ Go to the previous page.
         """
         if self.page > 1:
             self.page -= 1
@@ -115,7 +143,7 @@ class GalleryView(discord.ui.View):
     @discord.ui.button(label="Next ⏭️", style=discord.ButtonStyle.primary, row=0)
     async def next(self, interaction: discord.Interaction, button: discord.ui.Button):
         """
-        Go to the next page.
+        ⏭️ Go to the next page.
         """
         if self.page < self.max_page:
             self.page += 1
@@ -126,7 +154,7 @@ class GalleryView(discord.ui.View):
     @discord.ui.button(label="🔄 Switch View", style=discord.ButtonStyle.secondary, row=0)
     async def switch_view(self, interaction: discord.Interaction, button: discord.ui.Button):
         """
-        Switch between single image view (1 per page) and multi-image view (3 per page).
+        🔄 Switch between single image view (1 per page) and multi-image view (3 per page).
         """
         self.per_page = 3 if self.per_page == 1 else 1
         self.max_page = (len(self.images) - 1) // self.per_page + 1
@@ -138,14 +166,15 @@ class GalleryView(discord.ui.View):
     @discord.ui.button(label="📄 Go to Page", style=discord.ButtonStyle.secondary, row=0)
     async def go_to_page(self, interaction: discord.Interaction, button: discord.ui.Button):
         """
-        Open a modal to jump to a specific page.
+        📄 Open a modal to jump to a specific page.
         """
         modal = GoToPageModal(self)
         await interaction.response.send_modal(modal)
 
+# 🧩 Gallery Cog
 class Gallery(commands.Cog):
     """
-    Discord Cog for the gallery command.
+    🧩 Discord Cog for the gallery command.
     Fetches images from the gallery API, sorts them by date, and displays them with pagination.
     """
     def __init__(self, Bot: commands.Bot):
@@ -153,7 +182,7 @@ class Gallery(commands.Cog):
 
     async def get_images(self):
         """
-        Fetches the images from the gallery API.
+        🌐 Fetches the images from the gallery API.
         """
         async with aiohttp.ClientSession() as session:
             async with session.get(GALLERY_URL) as resp:
@@ -161,7 +190,7 @@ class Gallery(commands.Cog):
 
     async def get_authors(self):
         """
-        Returns a sorted list of unique authors from the gallery images.
+        🏷️ Returns a sorted list of unique authors from the gallery images.
         """
         images = await self.get_images()
         return sorted(set(img.get("author", "Unknown") for img in images if img.get("author")))
@@ -169,7 +198,7 @@ class Gallery(commands.Cog):
     @commands.hybrid_command(
         name="gallery",
         description="Shows images from the Void Tales Gallery",
-        aliases=["images"]  # Removed "gallery-test" alias
+        aliases=["images", "gallery-test"]  # 🧪 Added "gallery-test" alias for testing
     )
     @app_commands.describe(
         page_or_author="Page number or author name (optional)",
@@ -183,10 +212,14 @@ class Gallery(commands.Cog):
         !gallery hyphonical        -> first page, only author 'hyphonical'
         !gallery 2 hyphonical      -> page 2, only author 'hyphonical'
         !gallery hyphonical 2      -> page 2, only author 'hyphonical'
+        !gallery-test              -> same as !gallery
         """
+        # 💖 Log the usage with [Gallery] for highlighting
+        Logger.info('[Gallery] command used by %s (ID: %s) with args: page_or_author=%s, author=%s', ctx.author, ctx.author.id, page_or_author, author)
+
         images = await self.get_images()
 
-        # Sort images by ISO date string, newest first
+        # 🗓️ Sort images by ISO date string, newest first
         def parse_date(img):
             try:
                 return datetime.fromisoformat(img.get("date", ""))
@@ -195,18 +228,18 @@ class Gallery(commands.Cog):
 
         images.sort(key=parse_date, reverse=True)
 
-        # --- Robust argument parsing for both prefix and slash commands ---
+        # 🧮 Robust argument parsing for both prefix and slash commands
         page = 1
         author_arg = None
 
-        # Gather all provided arguments
+        # 🗃️ Gather all provided arguments
         args = []
         if page_or_author:
             args.append(str(page_or_author))
         if author:
             args.append(str(author))
 
-        # Parse arguments: first non-digit as author, any digit as page (order independent)
+        # 🔍 Parse arguments: first non-digit as author, any digit as page (order independent)
         for arg in args:
             if author_arg is None and not arg.isdigit():
                 author_arg = arg
@@ -219,23 +252,25 @@ class Gallery(commands.Cog):
         if author_arg:
             author = author_arg
 
-        # Filter by author if provided (case-insensitive)
+        # 🏷️ Filter by author if provided (case-insensitive)
         if author:
             images = [img for img in images if author.lower() in img.get("author", "").lower()]
 
-        # Calculate max_page after filtering
+        # 🧮 Calculate max_page after filtering
         max_page = (len(images) - 1) // PER_PAGE + 1
 
+        # 🚫 No images found
         if not images:
             await ctx.send("No images found for this filter.", ephemeral=True)
             return
 
-        # Clamp page to valid range to avoid errors
+        # 🔢 Clamp page to valid range to avoid errors
         page = max(1, min(page, max_page))
 
         embeds = make_gallery_embeds(images, page, PER_PAGE, author)
         view = GalleryView(images, page, PER_PAGE, author)
 
+        # 💬 Send embeds and view
         if isinstance(ctx, commands.Context):
             await ctx.send(embeds=embeds, view=view)
         else:
@@ -244,16 +279,17 @@ class Gallery(commands.Cog):
     @gallery.autocomplete("author")
     async def author_autocomplete(self, interaction: discord.Interaction, current: str):
         """
-        Provides autocomplete suggestions for the author argument in the slash command.
+        💡 Provides autocomplete suggestions for the author argument in the slash command.
+        Uses fuzzy matching to tolerate typos and suggest similar author names.
         """
         authors = await self.get_authors()
+        # 🔍 Use fuzzy matching to find close matches, tolerating typos
+        matches = difflib.get_close_matches(current, authors, n=25, cutoff=FuzzyMatchingThreshold)
         return [
             app_commands.Choice(name=a, value=a)
-            for a in authors if current.lower() in a.lower()
-        ][:25]
+            for a in matches
+        ]
 
+# ⚙️ Async setup function for this cog
 async def setup(Bot: commands.Bot):
-    """
-    Async setup function for this cog.
-    """
     await Bot.add_cog(Gallery(Bot))
