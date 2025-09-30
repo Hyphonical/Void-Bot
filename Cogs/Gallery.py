@@ -169,7 +169,7 @@ class Gallery(commands.Cog):
     @commands.hybrid_command(
         name="gallery",
         description="Shows images from the Void Tales Gallery",
-        aliases=["images", "gallery-test"]  # Added "gallery-test" as an alias for testing
+        aliases=["images"]  # Removed "gallery-test" alias
     )
     @app_commands.describe(
         page_or_author="Page number or author name (optional)",
@@ -183,7 +183,6 @@ class Gallery(commands.Cog):
         !gallery hyphonical        -> first page, only author 'hyphonical'
         !gallery 2 hyphonical      -> page 2, only author 'hyphonical'
         !gallery hyphonical 2      -> page 2, only author 'hyphonical'
-        !gallery-test              -> same as !gallery
         """
         images = await self.get_images()
 
