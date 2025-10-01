@@ -113,7 +113,7 @@ class GalleryView(discord.ui.View):
     Provides Previous, Next, Switch View, and Go to Page buttons.
     """
     def __init__(self, images, page=1, per_page=PER_PAGE, author=None):
-        super().__init__(timeout=60)
+        super().__init__(timeout=10800)  # ⏳ Set timeout to 3 hours (3*60*60 seconds)
         self.images = images
         self.page = page
         self.per_page = per_page
