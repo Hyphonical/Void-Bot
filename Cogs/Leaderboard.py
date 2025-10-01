@@ -63,9 +63,9 @@ class Leaderboard(commands.Cog):
 
 		# 📈 Get top 10 and normalize activity index to percentage
 		Medals = {
-			1: '<:Rank1:1411435162578849863>',
-			2: '<:Rank2:1411435194610876466>',
-			3: '<:Rank3:1411435240706015332>',
+			1: '<:Rank1:1422932640729923624>',
+			2: '<:Rank2:1422932623981809664>',
+			3: '<:Rank3:1422932530213945374>',
 		}
 		TopPlayers = SortedPlayers[:10]
 		LeaderboardText = ''
