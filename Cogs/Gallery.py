@@ -46,12 +46,18 @@ def make_gallery_embeds(images, page, per_page, author=None):
     )
     embeds.append(header_embed)
 
+    # 🔗 Base URL for delete links (adjust if needed)
+    delete_base_url = "https://n8n.hzwd.xyz/webhook/delete-image"
+
     for img in page_images:  # Only one image per page
         img_id = img.get("id", "")
         # 🌐 Use the full image URL for display
         url = img["imageUrl"] if img["imageUrl"].startswith("http") else BASE_URL + img["imageUrl"]
         # 🔗 Link to the gallery page for this image
         gallery_link = f"{BASE_URL}/#img-{img_id}"
+        # 🗑️ Link to delete the image via n8n webhook
+        delete_link = f"{delete_base_url}?imageId={img_id}"
+
         # 🗓️ Format date to human-readable with AM/PM
         date_str = img.get('date', '')
         if date_str:
@@ -64,7 +70,10 @@ def make_gallery_embeds(images, page, per_page, author=None):
             formatted_date = 'Unknown'
         embed = discord.Embed(
             title=f"Title: {img.get('title', 'Image')}",
-            description=f'Author: {img.get("author", "Unknown")}\n[Open in Gallery]({gallery_link})',
+            description=(
+                f'Author: {img.get("author", "Unknown")}\n'
+                f'[🌐 Open in Gallery]({gallery_link}) | [🗑️ Delete this image]({delete_link})'
+            ),
             color=0xA0D6B4,
         )
         # 📝 Add caption if available
