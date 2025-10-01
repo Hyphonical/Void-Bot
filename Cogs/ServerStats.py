@@ -86,16 +86,18 @@ def GetChangeEmoji(Current: str, Previous: str, IsIncreaseGood: bool = True) -> 
 			return float(Val.replace('%', ''))
 		if 'GB' in Val:
 			return float(Val.replace('GB', ''))
-		if 'h' in Val or 'm' in Val or 's' in Val:
-			# Parse downtime: e.g., "20h 43m 34s" -> seconds
-			Parts = Val.replace('h', ' ').replace('m', ' ').replace('s', '').split()
+		if 'd' in Val or 'h' in Val or 'm' in Val or 's' in Val:
+			# Parse downtime: e.g., "6d 20h 43m 34s" -> seconds
+			Parts = Val.replace('d', ' ').replace('h', ' ').replace('m', ' ').replace('s', '').split()
 			Seconds = 0.0
 			if len(Parts) >= 1:
-				Seconds += float(Parts[0]) * 3600  # hours
+				Seconds += float(Parts[0]) * 86400  # days
 			if len(Parts) >= 2:
-				Seconds += float(Parts[1]) * 60  # minutes
+				Seconds += float(Parts[1]) * 3600  # hours
 			if len(Parts) >= 3:
-				Seconds += float(Parts[2])  # seconds
+				Seconds += float(Parts[2]) * 60  # minutes
+			if len(Parts) >= 4:
+				Seconds += float(Parts[3])  # seconds
 			return Seconds
 		try:
 			return float(Val)
