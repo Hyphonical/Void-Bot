@@ -32,9 +32,9 @@ class Suggestions(commands.Cog):
 
 		# 📊 Create poll with suggestion as question
 		Poll = discord.Poll(question=suggestion, duration=datetime.timedelta(days=7))
-		Poll.add_answer(text='Upvote', emoji='<:GreenIncrease:1411407181802115214>')
-		Poll.add_answer(text='Unsure', emoji='<:Unknown:1411613426534322226>')
-		Poll.add_answer(text='Downvote', emoji='<:RedDecrease:1411407212374392842>')
+		Poll.add_answer(text='Upvote', emoji='<:GreenIncrease:1422935980817645648>')
+		Poll.add_answer(text='Unsure', emoji='<:Unknown:1422932441525653675>')
+		Poll.add_answer(text='Downvote', emoji='<:RedDecrease:1422932924474331266>')
 
 		# 📤 Send poll
 		await Channel.send(

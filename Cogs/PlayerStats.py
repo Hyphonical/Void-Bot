@@ -16,17 +16,17 @@ import discord
 # 💡 Get emoji based on latency
 def GetPingEmoji(Latency: float) -> str:
 	if Latency > 500:
-		return '<:Ping1:1411342192647082045>'  # Extremely high
+		return '<:Ping1:1422932999401639937>'  # Extremely high
 	elif Latency > 400:
-		return '<:Ping2:1411342222489550940>'
+		return '<:Ping2:1422933063759036578>'
 	elif Latency > 300:
-		return '<:Ping3:1411342248628588595>'
+		return '<:Ping3:1422933085212770324>'
 	elif Latency > 200:
-		return '<:Ping4:1411342274423558275>'
+		return '<:Ping4:1422933101138546688>'
 	elif Latency > 100:
-		return '<:Ping5:1411342297856999424>'
+		return '<:Ping5:1422933118930780291>'
 	else:
-		return '<:Ping6:1411342320955031664>'  # Low ping
+		return '<:Ping6:1422933134407897119>'  # Low ping
 
 
 class PlayerStats(commands.Cog):
@@ -107,12 +107,12 @@ class PlayerStats(commands.Cog):
 			color=0xA0D6B4,
 		)
 		Embed.description = f"""
-		Playtime: `{Playtime}` <:Time:1411437655866085528>
-		Sessions: `{Sessions}` <:Sessions:1411440697248186500>
+		Playtime: `{Playtime}` <:Time:1422932510102523924>
+		Sessions: `{Sessions}` <:Sessions:1422932457283391589>
 		Country: `{Country}` {CountryFlag if CountryFlag else ''}
 		Avg Ping: `{PingAvg}ms` {GetPingEmoji(PingAvg)}
-		Balance: `{Balance}` <:Balance:1411436246659502262>
-		Rank: `{Group}` <:Winner:1411440476833316919>
+		Balance: `{Balance}` <:Balance:1422932656517283941>
+		Rank: `{Group}` <:Winner:1422932500061356193>
 		"""
 		Embed.set_thumbnail(
 			url=f'https://api.mineatar.io/head/{Player.get("playerUUID")}?scale=10&overlay=true'

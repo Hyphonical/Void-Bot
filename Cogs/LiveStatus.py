@@ -26,7 +26,7 @@ class LiveStatusView(View):
 	@discord.ui.button(
 		label='Refresh',
 		style=discord.ButtonStyle.grey,
-		emoji='<:Refresh:1411438460190986330>',
+		emoji='<:Refresh:1422932521049657457>',
 	)
 	async def RefreshButton(self, Interaction: discord.Interaction, Button: Button):
 		await self.CogInstance.UpdateStatusMessage(Interaction)

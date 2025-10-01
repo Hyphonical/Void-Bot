@@ -62,19 +62,19 @@ def MeasureLatency(Host: str, Port: int) -> float | None:
 # 💡 Get emoji based on latency
 def GetPingEmoji(Latency: float | None) -> str:
 	if Latency is None:
-		return '<:Ping0:1411342120253390878>'  # No connection
+		return '<:Ping0:1422932936445005876>'  # No connection
 	elif Latency > 500:
-		return '<:Ping1:1411342192647082045>'  # Extremely high
+		return '<:Ping1:1422932999401639937>'  # Extremely high
 	elif Latency > 400:
-		return '<:Ping2:1411342222489550940>'
+		return '<:Ping2:1422933063759036578>'
 	elif Latency > 300:
-		return '<:Ping3:1411342248628588595>'
+		return '<:Ping3:1422933085212770324>'
 	elif Latency > 200:
-		return '<:Ping4:1411342274423558275>'
+		return '<:Ping4:1422933101138546688>'
 	elif Latency > 100:
-		return '<:Ping5:1411342297856999424>'
+		return '<:Ping5:1422933118930780291>'
 	else:
-		return '<:Ping6:1411342320955031664>'  # Low ping
+		return '<:Ping6:1422933134407897119>'  # Low ping
 
 
 # 💡 Get emoji based on change from 30d to 24h (increase/decrease)
@@ -113,16 +113,16 @@ def GetChangeEmoji(Current: str, Previous: str, IsIncreaseGood: bool = True) -> 
 	if IsIncreaseGood:
 		# For good metrics (e.g., TPS, players), increase is good, decrease is bad
 		return (
-			'<:GreenIncrease:1411407181802115214>'
+			'<:GreenIncrease:1422935980817645648>'
 			if IsIncrease
-			else '<:RedDecrease:1411407212374392842>'
+			else '<:RedDecrease:1422932924474331266>'
 		)
 	else:
 		# For bad metrics (e.g., CPU, RAM, downtime), increase is bad, decrease is good
 		return (
-			'<:RedIncrease:1411409442502611005>'
+			'<:RedIncrease:1422932680168837151>'
 			if IsIncrease
-			else '<:GreenDecrease:1411409470315041009>'
+			else '<:GreenDecrease:1422932666734612481>'
 		)
 
 
@@ -148,8 +148,8 @@ def CreateStatusEmbed(
 		color=0xA0D6B4,
 	)
 	Embed.description = f"""
-	Version: `{Version}` <:Version:1411439439342731334>
-	Players: `{PlayersOnline}/{PlayersMax}` <:Player:1411439027508220043>
+	Version: `{Version}` <:Version:1422932471770644580>
+	Players: `{PlayersOnline}/{PlayersMax}` <:Player:1422932487868383322>
 	Latency: `{LatencyText}` {PingEmoji}
 	Description: ```{Description}```
 	"""
@@ -266,7 +266,7 @@ class RefreshView(View):
 		self.PlanAPI = PlanAPI
 
 	@discord.ui.button(
-		label='Refresh', style=discord.ButtonStyle.grey, emoji='<:Refresh:1411438460190986330>'
+		label='Refresh', style=discord.ButtonStyle.grey, emoji='<:Refresh:1422932521049657457>'
 	)
 	async def RefreshButton(self, interaction: discord.Interaction, button: Button):
 		try:
