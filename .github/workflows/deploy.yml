@@ -3,6 +3,7 @@ name: 🚀 Deploy & Restart Pterodactyl Bot Server
 on:
   push:
     branches: ["main"]  # 🟢 Trigger on push to main branch
+  workflow_dispatch: {}  # 🔘 Allow manual triggering of the workflow
 
 jobs:
   deploy:
