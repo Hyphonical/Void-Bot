@@ -130,62 +130,48 @@ class GoToPageModal(discord.ui.Modal):
 class GalleryView(discord.ui.View):
     """
     🎛️ Discord UI View for gallery navigation.
-    Provides Previous, Next, Switch View, and Go to Page buttons.
+    Provides Previous, Next, Switch View, Go to Page, and Reload buttons.
     """
-    def __init__(self, images, page=1, per_page=PER_PAGE, author=None):
+    def __init__(self, images, page=1, per_page=PER_PAGE, author=None, ctx=None):
         super().__init__(timeout=10800)  # ⏳ Set timeout to 3 hours (3*60*60 seconds)
         self.images = images
         self.page = page
         self.per_page = per_page
         self.author = author  # Store author for title updates
         self.max_page = (len(images) - 1) // per_page + 1
+        self.ctx = ctx  # Store context for reload
         self.update_buttons()
 
     def update_buttons(self):
-        """
-        🔄 Keep navigation button styles always primary (blue).
-        Buttons remain enabled for wrap-around navigation.
-        """
         prev_button: discord.ui.Button = self.children[0]
         next_button: discord.ui.Button = self.children[1]
-
-        prev_button.style = discord.ButtonStyle.primary    # 🔵 Always blue
-        next_button.style = discord.ButtonStyle.primary    # 🔵 Always blue
-
+        prev_button.style = discord.ButtonStyle.primary
+        next_button.style = discord.ButtonStyle.primary
         prev_button.disabled = False
         next_button.disabled = False
 
     @discord.ui.button(label="⏮️ Previous", style=discord.ButtonStyle.primary, row=0)
     async def previous(self, interaction: discord.Interaction, button: discord.ui.Button):
-        """
-        ⏮️ Go to the previous page.
-        """
         if self.page > 1:
             self.page -= 1
         else:
-            self.page = self.max_page  # 🔄 Wrap to last page if at first
+            self.page = self.max_page
         self.update_buttons()
         embeds = make_gallery_embeds(self.images, self.page, self.per_page, self.author)
         await interaction.response.edit_message(embeds=embeds, view=self)
 
     @discord.ui.button(label="Next ⏭️", style=discord.ButtonStyle.primary, row=0)
     async def next(self, interaction: discord.Interaction, button: discord.ui.Button):
-        """
-        ⏭️ Go to the next page.
-        """
         if self.page < self.max_page:
             self.page += 1
         else:
-            self.page = 1  # 🔄 Wrap to first page if at last
+            self.page = 1
         self.update_buttons()
         embeds = make_gallery_embeds(self.images, self.page, self.per_page, self.author)
         await interaction.response.edit_message(embeds=embeds, view=self)
 
     @discord.ui.button(label="🔄 Switch View", style=discord.ButtonStyle.secondary, row=0)
     async def switch_view(self, interaction: discord.Interaction, button: discord.ui.Button):
-        """
-        🔄 Switch between single image view (1 per page) and multi-image view (3 per page).
-        """
         self.per_page = 3 if self.per_page == 1 else 1
         self.max_page = (len(self.images) - 1) // self.per_page + 1
         self.page = max(1, min(self.page, self.max_page))
@@ -195,11 +181,35 @@ class GalleryView(discord.ui.View):
 
     @discord.ui.button(label="📄 Go to Page", style=discord.ButtonStyle.secondary, row=0)
     async def go_to_page(self, interaction: discord.Interaction, button: discord.ui.Button):
-        """
-        📄 Open a modal to jump to a specific page.
-        """
         modal = GoToPageModal(self)
         await interaction.response.send_modal(modal)
+
+    @discord.ui.button(label="🔃 Reload", style=discord.ButtonStyle.secondary, row=0)
+    async def reload(self, interaction: discord.Interaction, button: discord.ui.Button):
+        """
+        🔃 Reload images.json and update the gallery view.
+        """
+        cog = interaction.client.get_cog("Gallery")
+        if cog:
+            images = await cog.get_images()
+            # 🗓️ Sort images by ISO date string, newest first (same as in command)
+            def parse_date(img):
+                try:
+                    return datetime.fromisoformat(img.get("date", ""))
+                except Exception:
+                    return datetime.min
+            images.sort(key=parse_date, reverse=True)
+            # Filter by author if needed
+            if self.author:
+                images = [img for img in images if self.author.lower() in img.get("author", "").lower()]
+            self.images = images
+            self.max_page = (len(images) - 1) // self.per_page + 1
+            self.page = max(1, min(self.page, self.max_page))
+            self.update_buttons()
+            embeds = make_gallery_embeds(self.images, self.page, self.per_page, self.author)
+            await interaction.response.edit_message(embeds=embeds, view=self)
+        else:
+            await interaction.response.send_message("Could not reload images.", ephemeral=True)
 
 # 🧩 Gallery Cog
 class Gallery(commands.Cog):
@@ -298,7 +308,7 @@ class Gallery(commands.Cog):
         page = max(1, min(page, max_page))
 
         embeds = make_gallery_embeds(images, page, PER_PAGE, author)
-        view = GalleryView(images, page, PER_PAGE, author)
+        view = GalleryView(images, page, PER_PAGE, author, ctx)
 
         # 💬 Send embeds and view
         if isinstance(ctx, commands.Context):
