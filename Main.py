@@ -2,6 +2,7 @@
 import difflib
 import pathlib
 import time
+import os
 
 # 📥 Custom modules
 from Utils.Logger import Logger, logging, ConsoleHandler
@@ -44,9 +45,19 @@ class Bot(commands.Bot):
 		else:
 			Logger.error('Failed to get bot user details')
 			return
-		Logger.info('Syncing application commands...')
-		Logger.info(f'Global commands before sync: {[cmd.name for cmd in self.tree.get_commands()]}')  # 🐛 Debug: Global commands
-		await self.tree.sync()
+
+		# ⚙️ Only sync global slash commands for production bot!
+        # This prevents the test bot from registering commands globally,
+        # keeping the global command list clean and avoiding clutter.
+        # Set BOT_TYPE=test in your .env for the test bot.
+		if os.getenv("BOT_TYPE") != "test":
+			Logger.info('Syncing application commands...')
+			# Logger.info(f'Global commands before sync: {[cmd.name for cmd in self.tree.get_commands()]}')  # 🐛 Debug: Global commands
+			await self.tree.sync()
+			Logger.info('Done syncing application commands.')
+		else:
+			Logger.info('Global sync skipped for test bot.')
+
 		# for Guild in self.guilds:
 		# 	Logger.info(f'• Syncing commands for guild: {Guild.name} ({Guild.id})')
 		# 	try:
@@ -54,7 +65,6 @@ class Bot(commands.Bot):
 		# 		Logger.info(f'Guild commands after sync for {Guild.id}: {[cmd.name for cmd in self.tree.get_commands(guild=Guild)]}')  # 🐛 Debug: Guild-specific commands
 		# 	except Exception as E:
 		# 		Logger.error(f'• Failed to sync commands for guild {Guild.id}: {E}')
-		Logger.info('Done syncing application commands.')
 
 	async def on_message(self, message: discord.Message) -> None:
 		if message.author == self.user:
