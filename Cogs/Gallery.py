@@ -39,9 +39,13 @@ def make_gallery_embeds(images, page, per_page, author=None):
     title = f"🖼️ VoidTales Gallery"
     if author:
         title += f" - Images by {author}"
-    title += f" Page {page}/{max_page}"
+    title += f" Page {page}/{max_page} 🌌"
     header_embed = discord.Embed(
         title=title,
+        description=(
+            "🌐 *Browse images on [gallery.voidtales.win](https://gallery.voidtales.win)*\n"
+            "📸 *Upload your own in [#breathtaking-screenshots](https://discord.com/channels/1264616683671388252/1264644697155043398)*"
+        ),
         color=0xA0D6B4
     )
     embeds.append(header_embed)
@@ -132,11 +136,17 @@ class GalleryView(discord.ui.View):
 
     def update_buttons(self):
         """
-        🔄 Enable or disable navigation buttons depending on the current page.
+        🔄 Keep navigation button styles always primary (blue).
+        Buttons remain enabled for wrap-around navigation.
         """
-        self.children[0].disabled = self.page <= 1
-        self.children[1].disabled = self.page >= self.max_page
-        # Other buttons are always enabled
+        prev_button: discord.ui.Button = self.children[0]
+        next_button: discord.ui.Button = self.children[1]
+
+        prev_button.style = discord.ButtonStyle.primary    # 🔵 Always blue
+        next_button.style = discord.ButtonStyle.primary    # 🔵 Always blue
+
+        prev_button.disabled = False
+        next_button.disabled = False
 
     @discord.ui.button(label="⏮️ Previous", style=discord.ButtonStyle.primary, row=0)
     async def previous(self, interaction: discord.Interaction, button: discord.ui.Button):
@@ -145,9 +155,11 @@ class GalleryView(discord.ui.View):
         """
         if self.page > 1:
             self.page -= 1
-            self.update_buttons()
-            embeds = make_gallery_embeds(self.images, self.page, self.per_page, self.author)
-            await interaction.response.edit_message(embeds=embeds, view=self)
+        else:
+            self.page = self.max_page  # 🔄 Wrap to last page if at first
+        self.update_buttons()
+        embeds = make_gallery_embeds(self.images, self.page, self.per_page, self.author)
+        await interaction.response.edit_message(embeds=embeds, view=self)
 
     @discord.ui.button(label="Next ⏭️", style=discord.ButtonStyle.primary, row=0)
     async def next(self, interaction: discord.Interaction, button: discord.ui.Button):
@@ -156,9 +168,11 @@ class GalleryView(discord.ui.View):
         """
         if self.page < self.max_page:
             self.page += 1
-            self.update_buttons()
-            embeds = make_gallery_embeds(self.images, self.page, self.per_page, self.author)
-            await interaction.response.edit_message(embeds=embeds, view=self)
+        else:
+            self.page = 1  # 🔄 Wrap to first page if at last
+        self.update_buttons()
+        embeds = make_gallery_embeds(self.images, self.page, self.per_page, self.author)
+        await interaction.response.edit_message(embeds=embeds, view=self)
 
     @discord.ui.button(label="🔄 Switch View", style=discord.ButtonStyle.secondary, row=0)
     async def switch_view(self, interaction: discord.Interaction, button: discord.ui.Button):
