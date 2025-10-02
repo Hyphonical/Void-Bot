@@ -23,6 +23,8 @@ BASE_URL = "https://gallery.voidtales.win"
 PER_PAGE = 1  # 🖼️ Changed to 1 image per page for better overview
 
 # 🖼️ Create embeds for gallery images
+STAFF_AUTHORS = ["shinsnowly", ".inventory", "hyphonical", "razorbl8de"]  # Add more staff names as needed
+
 def make_gallery_embeds(images, page, per_page, author=None):
     """
     📦 Creates a list of Discord embeds for the images on the current page.
@@ -72,10 +74,15 @@ def make_gallery_embeds(images, page, per_page, author=None):
                 formatted_date = 'Unknown'
         else:
             formatted_date = 'Unknown'
+
+        author_name = img.get("author", "Unknown")
+        is_staff = img.get("isStaff", False) or author_name.lower() in [a.lower() for a in STAFF_AUTHORS]
+        staff_text = "⭐ Staff Image\n" if is_staff else ""
+
         embed = discord.Embed(
             title=f"Title: {img.get('title', 'Image')}",
             description=(
-                f'Author: {img.get("author", "Unknown")}\n'
+                f'{staff_text}Author: {author_name}\n'
                 f'[🌐 Open in Gallery]({gallery_link}) | [🗑️ Delete this image]({delete_link})'
             ),
             color=0xA0D6B4,
