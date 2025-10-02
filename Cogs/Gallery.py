@@ -83,7 +83,7 @@ def make_gallery_embeds(images, page, per_page, author=None):
             title=f"Title: {img.get('title', 'Image')}",
             description=(
                 f'{staff_text}Author: {author_name}\n'
-                f'[🌐 Open in Gallery]({gallery_link}) | [🗑️ Delete this image]({delete_link})'
+                f'[🌐 Open in Gallery]({gallery_link}) — [🗑️ Delete this image]({delete_link})'
             ),
             color=0xA0D6B4,
         )
