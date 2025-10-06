@@ -96,7 +96,7 @@ def make_gallery_embeds(images, page, per_page, author=None):
             description_text = img["body"]
 
         if description_text:
-            embed.add_field(name="Caption", value=description_text, inline=False)
+            embed.add_field(name="Description", value=description_text, inline=False)
 
         # 🖼️ Set the full-size image
         embed.set_image(url=url)
