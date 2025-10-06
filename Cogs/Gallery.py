@@ -87,9 +87,17 @@ def make_gallery_embeds(images, page, per_page, author=None):
             ),
             color=0xA0D6B4,
         )
-        # 📝 Add caption if available
-        if img.get("caption"):
-            embed.add_field(name="Caption", value=img["caption"], inline=False)
+        
+        # 📝 Add caption or body if available (prioritize caption over body)
+        description_text = None
+        if img.get("caption") and img["caption"].strip():
+            description_text = img["caption"]
+        elif img.get("body") and img["body"].strip():
+            description_text = img["body"]
+
+        if description_text:
+            embed.add_field(name="Caption", value=description_text, inline=False)
+
         # 🖼️ Set the full-size image
         embed.set_image(url=url)
         # 🏷️ Add ID, date, and bot name to footer
