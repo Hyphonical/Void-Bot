@@ -30,6 +30,9 @@ class Help(commands.Cog):
 		# 🗂️ Group commands by cog
 		Categories = {}
 		for Command in self.Bot.commands:
+			# Skip hidden commands like 'say'
+			if Command.name in ['say']:
+				continue
 			CogName = Command.cog.qualified_name if Command.cog else 'No Category'
 			if CogName not in Categories:
 				Categories[CogName] = []
