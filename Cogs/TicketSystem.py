@@ -197,6 +197,9 @@ async def create_ticket(interaction: discord.Interaction, ticket_type: str, init
         interaction.user: discord.PermissionOverwrite(view_channel=True),
         guild.me: discord.PermissionOverwrite(view_channel=True)
     }
+    moderator_role = discord.utils.get(guild.roles, id=MODERATOR_ROLE_ID)
+    if moderator_role:
+        overwrites[moderator_role] = discord.PermissionOverwrite(view_channel=True)
     ticket_num = len(tickets) + 1
     channel = await guild.create_text_channel(
         name=f"ticket-{ticket_num}-{ticket_type}-{interaction.user.name}",
