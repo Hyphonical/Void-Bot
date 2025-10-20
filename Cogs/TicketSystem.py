@@ -19,11 +19,15 @@ NORMAL_ROLE_ID = 0  # Placeholder, not used
 # === Category ID ===
 TICKETS_CATEGORY_ID = 1308780597988036628
 
+# === Transcripts Channel ID ===
+TRANSCRIPTS_CHANNEL_ID = 1308793574329946162
+
 # === Path to JSON file ===
 TICKET_FILE = "tickets.json"
 
 # === Helper functions for JSON persistence ===
-def load_tickets():
+async def load_tickets():
+    os.makedirs(os.path.dirname(TICKET_FILE), exist_ok=True)
     if not os.path.exists(TICKET_FILE):
         with open(TICKET_FILE, "w") as f:
             json.dump([], f)
@@ -34,24 +38,27 @@ def load_tickets():
         Logger.error("Error loading tickets.json – resetting file.")
         return []
 
-def save_ticket(ticket):
-    tickets = load_tickets()
+
+async def delete_ticket(channel_id: int):
+    tickets = await load_tickets()
+    tickets = [t for t in tickets if t["channel_id"] != channel_id]
+    with open(TICKET_FILE, "w") as f:
+        json.dump(tickets, f, indent=2)
+
+
+async def save_ticket(ticket):
+    tickets = await load_tickets()
     tickets.append(ticket)
     with open(TICKET_FILE, "w") as f:
         json.dump(tickets, f, indent=2)
 
-def update_ticket(channel_id, updates):
-    tickets = load_tickets()
+
+async def update_ticket(channel_id: int, updates):
+    tickets = await load_tickets()
     for ticket in tickets:
         if ticket["channel_id"] == channel_id:
             ticket.update(updates)
             break
-    with open(TICKET_FILE, "w") as f:
-        json.dump(tickets, f, indent=2)
-
-def delete_ticket(channel_id):
-    tickets = load_tickets()
-    tickets = [t for t in tickets if t["channel_id"] != channel_id]
     with open(TICKET_FILE, "w") as f:
         json.dump(tickets, f, indent=2)
 
@@ -151,7 +158,12 @@ class InitialMessageModal(discord.ui.Modal, title="Provide additional details (o
         self.ticket_type = ticket_type
 
     async def on_submit(self, interaction: discord.Interaction):
-        await create_ticket(interaction, self.ticket_type, self.initial_message.value or None)
+        try:
+            Logger.info(f"InitialMessageModal submitted by {interaction.user}")
+            await create_ticket(interaction, self.ticket_type, self.initial_message.value or None)
+        except Exception as e:
+            Logger.error(f"Error in InitialMessageModal.on_submit: {e}")
+            await interaction.response.send_message("An error occurred. Please try again.", ephemeral=True)
 
 # === Dropdown for ticket type selection ===
 class TicketTypeSelect(discord.ui.Select):
@@ -164,9 +176,14 @@ class TicketTypeSelect(discord.ui.Select):
         super().__init__(placeholder="Choose the ticket type…", options=options)
 
     async def callback(self, interaction: discord.Interaction):
-        ticket_type = self.values[0]
-        # Open modal for optional message
-        await interaction.response.send_modal(InitialMessageModal(ticket_type))
+        try:
+            Logger.info(f"TicketTypeSelect callback by {interaction.user}")
+            ticket_type = self.values[0]
+            # Open modal for optional message
+            await interaction.response.send_modal(InitialMessageModal(ticket_type))
+        except Exception as e:
+            Logger.error(f"Error in TicketTypeSelect.callback: {e}")
+            await interaction.response.send_message("An error occurred. Please try again.", ephemeral=True)
 
 # === View with dropdown ===
 class TicketView(discord.ui.View):
@@ -176,100 +193,150 @@ class TicketView(discord.ui.View):
 
 # === Ticket creation ===
 async def create_ticket(interaction: discord.Interaction, ticket_type: str, initial_message: str = None):
-    # Check cooldown: 1 hour between ticket creations per user
-    tickets = load_tickets()
-    now = datetime.now()
-    user_tickets = [t for t in tickets if t["user_id"] == interaction.user.id]
-    if user_tickets:
-        last_ticket = max(user_tickets, key=lambda t: datetime.fromisoformat(t["created_at"]))
-        if now - datetime.fromisoformat(last_ticket["created_at"]) < timedelta(hours=1):
-            await interaction.response.send_message("You can only create a new ticket every 1 hour.", ephemeral=True)
-            return
+    try:
+        Logger.info(f"Starting ticket creation for user {interaction.user} with type {ticket_type}")
+        
+        # Check cooldown: 1 hour between ticket creations per user
+        tickets = await load_tickets()
+        now = datetime.now()
+        user_tickets = [t for t in tickets if t["user_id"] == interaction.user.id]
+        if user_tickets:
+            last_ticket = max(user_tickets, key=lambda t: datetime.fromisoformat(t["created_at"]))
+            if now - datetime.fromisoformat(last_ticket["created_at"]) < timedelta(hours=1):
+                Logger.warning(f"Cooldown active for user {interaction.user}")
+                await interaction.response.send_message("You can only create a new ticket every 1 hour.", ephemeral=True)
+                return
 
-    guild = interaction.guild
-    category = guild.get_channel(TICKETS_CATEGORY_ID)
-    if not category or not isinstance(category, discord.CategoryChannel):
-        Logger.error(f"Tickets category with ID {TICKETS_CATEGORY_ID} not found or is not a category.")
-        await interaction.response.send_message("Error: Tickets category not available.", ephemeral=True)
-        return
-    overwrites = {
-        guild.default_role: discord.PermissionOverwrite(view_channel=False),
-        interaction.user: discord.PermissionOverwrite(view_channel=True),
-        guild.me: discord.PermissionOverwrite(view_channel=True)
-    }
-    moderator_role = discord.utils.get(guild.roles, id=MODERATOR_ROLE_ID)
-    if moderator_role:
-        overwrites[moderator_role] = discord.PermissionOverwrite(view_channel=True)
-    ticket_num = len(tickets) + 1
-    channel = await guild.create_text_channel(
-        name=f"ticket-{ticket_num}-{ticket_type}-{interaction.user.name}",
-        overwrites=overwrites,
-        category=category
-    )
-    ticket_data = {
-        "ticket_id": str(uuid.uuid4()),
-        "ticket_num": ticket_num,
-        "user_id": interaction.user.id,
-        "channel_id": channel.id,
-        "type": ticket_type,
-        "status": "Open",
-        "claimed_by": None,
-        "assigned_to": None,
-        "created_at": datetime.now().isoformat(),
-        "embed_message_id": None,
-        "reopen_count": 0
-    }
-    # Add initial_message to ticket_data
-    ticket_data["initial_message"] = initial_message
-    save_ticket(ticket_data)
-    embed = create_ticket_embed(ticket_data, interaction.client.user)
-    view = TicketControlView()  # Buttons are active
-    msg = await channel.send(f"{interaction.user.mention}, your ticket has been opened!", embed=embed, view=view)
-    ticket_data["embed_message_id"] = msg.id
-    update_ticket(channel.id, {"embed_message_id": msg.id})
-    await interaction.response.send_message(f"Ticket created! {channel.mention}", ephemeral=True)
-    # Notify Admins/Moderators in the ticket channel
-    admin_roles = [guild.get_role(rid) for rid in ADMIN_ROLE_IDS]
-    moderator_role = guild.get_role(MODERATOR_ROLE_ID) if MODERATOR_ROLE_ID else None
-    roles_to_mention = []
-    for role in admin_roles:
-        if role:
-            roles_to_mention.append(role.mention)
-    if moderator_role:
-        roles_to_mention.append(moderator_role.mention)
-    if roles_to_mention:
+        guild = interaction.guild
+        Logger.info(f"Guild: {guild}, Guild ID: {guild.id if guild else 'None'}")
+        
+        category = guild.get_channel(TICKETS_CATEGORY_ID)
+        if not category or not isinstance(category, discord.CategoryChannel):
+            Logger.error(f"Tickets category with ID {TICKETS_CATEGORY_ID} not found or is not a category.")
+            await interaction.response.send_message("Error: Tickets category not available.", ephemeral=True)
+            return
+        
+        Logger.info(f"Category found: {category.name} (ID: {category.id})")
+        
+        # Check bot permissions
+        if not guild.me.guild_permissions.manage_channels:
+            Logger.error("Bot lacks 'Manage Channels' permission")
+            await interaction.response.send_message("Error: Bot lacks permissions to create channels.", ephemeral=True)
+            return
+        
+        overwrites = {
+            guild.default_role: discord.PermissionOverwrite(view_channel=False),
+            interaction.user: discord.PermissionOverwrite(view_channel=True),
+            guild.me: discord.PermissionOverwrite(view_channel=True)
+        }
+        moderator_role = discord.utils.get(guild.roles, id=MODERATOR_ROLE_ID)
+        if moderator_role:
+            overwrites[moderator_role] = discord.PermissionOverwrite(view_channel=True)
+        
+        ticket_num = len(tickets) + 1
+        # Shorten channel name to avoid exceeding 100 chars
+        user_name_short = interaction.user.name[:20]  # Limit username to 20 chars
+        channel_name = f"ticket-{ticket_num}-{ticket_type}-{user_name_short}"
+        if len(channel_name) > 100:
+            channel_name = channel_name[:97] + "..."  # Ensure under 100
+        
+        Logger.info(f"Creating channel: {channel_name}")
+        
         try:
-            await channel.send(f"{' '.join(roles_to_mention)} New ticket #{ticket_num} created by {interaction.user.mention}.")
-            Logger.info(f"Admin/Moderator roles notified in ticket channel.")
-        except Exception as e:
-            Logger.error(f"Error sending admin/moderator notification: {e}")
-    else:
-        Logger.warning("Admin or Moderator role not found.")
-    # Info for the creator
-    await channel.send("Please describe your problem, application, or support request in detail here. An admin or moderator will handle it soon.")
-    # If initial_message provided, send it in the channel
-    if initial_message:
-        await channel.send(f"**Initial details from {interaction.user.name}:**\n{initial_message}")
-    Logger.info(f"Ticket #{ticket_num} created by {interaction.user}.")
+            channel = await guild.create_text_channel(
+                name=channel_name,
+                overwrites=overwrites,
+                category=category
+            )
+            Logger.info(f"Channel created: {channel.name} (ID: {channel.id})")
+        except discord.Forbidden as e:
+            Logger.error(f"Forbidden error creating channel: {e}")
+            await interaction.response.send_message("Error: Bot lacks permissions to create the ticket channel.", ephemeral=True)
+            return
+        except discord.HTTPException as e:
+            Logger.error(f"HTTP error creating channel: {e}")
+            await interaction.response.send_message("Error: Failed to create ticket channel.", ephemeral=True)
+            return
+        
+        ticket_data = {
+            "ticket_id": str(uuid.uuid4()),
+            "ticket_num": ticket_num,
+            "user_id": interaction.user.id,
+            "channel_id": channel.id,
+            "type": ticket_type,
+            "status": "Open",
+            "claimed_by": None,
+            "assigned_to": None,
+            "created_at": datetime.now().isoformat(),
+            "embed_message_id": None,
+            "reopen_count": 0,
+            "initial_message": initial_message
+        }
+        
+        await save_ticket(ticket_data)
+        Logger.info(f"Ticket data saved for ticket #{ticket_num}")
+        
+        embed = create_ticket_embed(ticket_data, interaction.client.user)
+        view = TicketControlView()
+        msg = await channel.send(f"{interaction.user.mention}, your ticket has been opened!", embed=embed, view=view)
+        ticket_data["embed_message_id"] = msg.id
+        await update_ticket(channel.id, {"embed_message_id": msg.id})
+        
+        await interaction.response.send_message(f"Ticket created! {channel.mention}", ephemeral=True)
+        
+        # Notify Admins/Moderators in the ticket channel
+        admin_roles = [guild.get_role(rid) for rid in ADMIN_ROLE_IDS]
+        moderator_role = guild.get_role(MODERATOR_ROLE_ID) if MODERATOR_ROLE_ID else None
+        roles_to_mention = []
+        for role in admin_roles:
+            if role:
+                roles_to_mention.append(role.mention)
+        if moderator_role:
+            roles_to_mention.append(moderator_role.mention)
+        if roles_to_mention:
+            try:
+                await channel.send(f"{' '.join(roles_to_mention)} New ticket #{ticket_num} created by {interaction.user.mention}.")
+                Logger.info("Admin/Moderator roles notified in ticket channel.")
+            except Exception as e:
+                Logger.error(f"Error sending admin/moderator notification: {e}")
+        else:
+            Logger.warning("Admin or Moderator role not found.")
+        # Info for the creator
+        await channel.send("Please describe your problem, application, or support request in detail here. An admin or moderator will handle it soon.")
+        # If initial_message provided, send it in the channel
+        if initial_message:
+            await channel.send(f"**Initial details from {interaction.user.name}:**\n{initial_message}")
+        Logger.info(f"Ticket #{ticket_num} created by {interaction.user}.")
+    except Exception as e:
+        Logger.error(f"Unexpected error in create_ticket: {e}")
+        try:
+            await interaction.response.send_message("An unexpected error occurred. Please try again.", ephemeral=True)
+        except Exception:
+            pass  # If response already sent, ignore
 
 # === Modal for assignment ===
 class AssignModal(discord.ui.Modal, title="Assign ticket"):
     user_id = discord.ui.TextInput(label="Moderator's User ID", placeholder="123456789", required=True)
 
     async def on_submit(self, interaction: discord.Interaction):
-        tickets = load_tickets()
-        ticket = next((t for t in tickets if t["channel_id"] == interaction.channel.id), None)
-        if not ticket or not is_allowed_for_ticket_actions(interaction.user, ticket, "Assign"):
-            await interaction.response.send_message("Not authorized.", ephemeral=True)
-            return
         try:
-            user_id = int(self.user_id.value)
-            update_ticket(interaction.channel.id, {"assigned_to": user_id})
-            await update_embed_and_disable_buttons(interaction)
-            await interaction.response.send_message(f"Ticket assigned to <@{user_id}>.", ephemeral=False)
-            Logger.info(f"Ticket in {interaction.channel} assigned to {user_id}.")
-        except ValueError:
-            await interaction.response.send_message("Invalid User ID.", ephemeral=True)
+            Logger.info(f"AssignModal submitted by {interaction.user}")
+            tickets = await load_tickets()
+            ticket = next((t for t in tickets if t["channel_id"] == interaction.channel.id), None)
+            if not ticket or not is_allowed_for_ticket_actions(interaction.user, ticket, "Assign"):
+                await interaction.response.send_message("Not authorized.", ephemeral=True)
+                return
+            try:
+                user_id = int(self.user_id.value)
+                await update_ticket(interaction.channel.id, {"assigned_to": user_id})
+                await update_embed_and_disable_buttons(interaction)
+                await interaction.response.send_message(f"Ticket assigned to <@{user_id}>.", ephemeral=False)
+                Logger.info(f"Ticket in {interaction.channel} assigned to {user_id}.")
+            except ValueError:
+                await interaction.response.send_message("Invalid User ID.", ephemeral=True)
+        except Exception as e:
+            Logger.error(f"Error in AssignModal.on_submit: {e}")
+            await interaction.response.send_message("An error occurred. Please try again.", ephemeral=True)
 
 # === Select for assignment ===
 class AssignSelect(discord.ui.Select):
@@ -283,24 +350,29 @@ class AssignSelect(discord.ui.Select):
         super().__init__(placeholder="Choose a moderator to assign...", options=options[:25])  # Max 25
 
     async def callback(self, interaction: discord.Interaction):
-        if self.values[0] == "none":
-            await interaction.response.send_message("No moderators available.", ephemeral=True)
-            return
-        user_id = int(self.values[0])
-        tickets = load_tickets()
-        ticket = next((t for t in tickets if t["channel_id"] == interaction.channel.id), None)
-        if not ticket:
-            await interaction.response.send_message("Ticket not found.", ephemeral=True)
-            return
-        update_ticket(interaction.channel.id, {"assigned_to": user_id})
-        await update_embed_and_disable_buttons(interaction)
-        await interaction.response.send_message(f"Ticket assigned to <@{user_id}>.", ephemeral=False)
-        # Delete the select message
         try:
-            await interaction.message.delete()
-        except:
-            pass
-        Logger.info(f"Ticket in {interaction.channel} assigned to {user_id}.")
+            Logger.info(f"AssignSelect callback by {interaction.user}")
+            if self.values[0] == "none":
+                await interaction.response.send_message("No moderators available.", ephemeral=True)
+                return
+            user_id = int(self.values[0])
+            tickets = await load_tickets()
+            ticket = next((t for t in tickets if t["channel_id"] == interaction.channel.id), None)
+            if not ticket:
+                await interaction.response.send_message("Ticket not found.", ephemeral=True)
+                return
+            await update_ticket(interaction.channel.id, {"assigned_to": user_id})
+            await update_embed_and_disable_buttons(interaction)
+            await interaction.response.send_message(f"Ticket assigned to <@{user_id}>.", ephemeral=False)
+            # Delete the select message
+            try:
+                await interaction.message.delete()
+            except Exception:
+                pass
+            Logger.info(f"Ticket in {interaction.channel} assigned to {user_id}.")
+        except Exception as e:
+            Logger.error(f"Error in AssignSelect.callback: {e}")
+            await interaction.response.send_message("An error occurred. Please try again.", ephemeral=True)
 
 # === View for assignment ===
 class AssignView(discord.ui.View):
@@ -310,27 +382,30 @@ class AssignView(discord.ui.View):
 
 # === Helper function to update embed and disable buttons ===
 async def update_embed_and_disable_buttons(interaction):
-    tickets = load_tickets()
-    ticket = next((t for t in tickets if t["channel_id"] == interaction.channel.id), None)
-    if ticket and ticket.get("embed_message_id"):
-        embed = create_ticket_embed(ticket, interaction.client.user)
-        view = TicketControlView()
-        # Disable buttons based on permission and status
-        for item in view.children:
-            if isinstance(item, discord.ui.Button):
-                if ticket["status"] == "Closed" and item.label != "Reopen":
-                    item.disabled = True
-                elif not is_allowed_for_ticket_actions(interaction.user, ticket, item.label):
-                    item.disabled = True
-                elif item.label == "Claim" and ticket.get("claimed_by"):
-                    item.disabled = True
-                elif item.label == "Assign" and ticket.get("assigned_to"):
-                    item.disabled = True
-        try:
-            msg = await interaction.channel.fetch_message(ticket["embed_message_id"])
-            await msg.edit(embed=embed, view=view)
-        except discord.NotFound:
-            Logger.error(f"Embed message for ticket {ticket['ticket_num']} not found.")
+    try:
+        tickets = await load_tickets()
+        ticket = next((t for t in tickets if t["channel_id"] == interaction.channel.id), None)
+        if ticket and ticket.get("embed_message_id"):
+            embed = create_ticket_embed(ticket, interaction.client.user)
+            view = TicketControlView()
+            # Disable buttons based on permission and status
+            for item in view.children:
+                if isinstance(item, discord.ui.Button):
+                    if ticket["status"] == "Closed" and item.label != "Reopen":
+                        item.disabled = True
+                    elif not is_allowed_for_ticket_actions(interaction.user, ticket, item.label):
+                        item.disabled = True
+                    elif item.label == "Claim" and ticket.get("claimed_by"):
+                        item.disabled = True
+                    elif item.label == "Assign" and ticket.get("assigned_to"):
+                        item.disabled = True
+            try:
+                msg = await interaction.channel.fetch_message(ticket["embed_message_id"])
+                await msg.edit(embed=embed, view=view)
+            except discord.NotFound:
+                Logger.error(f"Embed message for ticket {ticket['ticket_num']} not found.")
+    except Exception as e:
+        Logger.error(f"Error in update_embed_and_disable_buttons: {e}")
 
 # === Helper function to disable buttons for closed tickets ===
 async def disable_buttons_for_closed_ticket(channel, ticket):
@@ -354,29 +429,16 @@ async def disable_buttons_for_closed_ticket(channel, ticket):
 async def close_ticket_async(bot, channel, ticket, followup, closing_msg):
     transcript = await create_transcript(channel)
     embed = create_transcript_embed(transcript, bot.user)
-    # Send transcript to handler
-    claimer = ticket.get("claimed_by")
-    if claimer:
-        user = bot.get_user(claimer)
-        if user:
-            try:
-                await user.send(embed=embed)
-            except discord.Forbidden:
-                Logger.warning(f"Could not send transcript to {user} (DMs disabled).")
-    # Send notification to creator with details
-    creator = bot.get_user(ticket["user_id"])
-    if creator:
+    # Send transcript to transcripts channel
+    transcripts_channel = bot.get_channel(TRANSCRIPTS_CHANNEL_ID)
+    if transcripts_channel:
         try:
-            dm_embed = discord.Embed(
-                title=f"Ticket #{ticket['ticket_num']} closed",
-                description=f"Server: {channel.guild.name}\nType: {ticket['type']}\n\nTranscript:\n{transcript[:1900]}",  # Limit
-                # Removed color=PINK
-            )
-            # Removed set_pink_footer
-            await creator.send(embed=dm_embed)
-        except discord.Forbidden:
-            Logger.warning(f"Could not send notification to {creator} (DMs disabled).")
-    # Update ticket status
+            await transcripts_channel.send(embed=embed)
+            Logger.info(f"Transcript for ticket #{ticket['ticket_num']} sent to transcripts channel.")
+        except Exception as e:
+            Logger.error(f"Error sending transcript to transcripts channel: {e}")
+    else:
+        Logger.error(f"Transcripts channel with ID {TRANSCRIPTS_CHANNEL_ID} not found.")
     ticket["status"] = "Closed"
     ticket["closed_at"] = datetime.now().isoformat()  # Add closed timestamp
     # Disable buttons and update embed before archiving
@@ -408,86 +470,111 @@ class TicketControlView(discord.ui.View):
 
     @discord.ui.button(label="Claim", style=discord.ButtonStyle.blurple, emoji="👋")
     async def claim(self, interaction: discord.Interaction, button: discord.ui.Button):
-        tickets = load_tickets()
-        ticket = next((t for t in tickets if t["channel_id"] == interaction.channel.id), None)
-        if not ticket or not is_allowed_for_ticket_actions(interaction.user, ticket, "Claim"):
-            await interaction.response.send_message("Not authorized.", ephemeral=True)
-            return
-        update_ticket(interaction.channel.id, {"claimed_by": interaction.user.id})
-        await update_embed_and_disable_buttons(interaction)
-        await interaction.response.send_message(f"{interaction.user.mention} has claimed the ticket.", ephemeral=False)
-        Logger.info(f"Ticket in {interaction.channel} claimed by {interaction.user}.")
+        try:
+            Logger.info(f"Claim button pressed by {interaction.user}")
+            tickets = await load_tickets()
+            ticket = next((t for t in tickets if t["channel_id"] == interaction.channel.id), None)
+            if not ticket or not is_allowed_for_ticket_actions(interaction.user, ticket, "Claim"):
+                await interaction.response.send_message("Not authorized.", ephemeral=True)
+                return
+            await update_ticket(interaction.channel.id, {"claimed_by": interaction.user.id})
+            await update_embed_and_disable_buttons(interaction)
+            await interaction.response.send_message(f"{interaction.user.mention} has claimed the ticket.", ephemeral=False)
+            Logger.info(f"Ticket in {interaction.channel} claimed by {interaction.user}.")
+        except Exception as e:
+            Logger.error(f"Error in claim button: {e}")
+            await interaction.response.send_message("An error occurred. Please try again.", ephemeral=True)
 
     @discord.ui.button(label="Assign", style=discord.ButtonStyle.gray, emoji="📋")
     async def assign(self, interaction: discord.Interaction, button: discord.ui.Button):
-        tickets = load_tickets()
-        ticket = next((t for t in tickets if t["channel_id"] == interaction.channel.id), None)
-        if not ticket or not is_allowed_for_ticket_actions(interaction.user, ticket, "Assign"):
-            await interaction.response.send_message("Not authorized.", ephemeral=True)
-            return
-        # Get available moderators/admins
-        guild = interaction.guild
-        available_users = [
-            member for member in guild.members
-            if any(role.id in ADMIN_ROLE_IDS + [MODERATOR_ROLE_ID] for role in member.roles)
-        ]
-        if not available_users:
-            await interaction.response.send_message("No moderators available to assign.", ephemeral=True)
-            return
-        # Send view with select
-        view = AssignView(available_users)
-        await interaction.response.send_message("Select a moderator to assign:", view=view, ephemeral=True)
+        try:
+            Logger.info(f"Assign button pressed by {interaction.user}")
+            tickets = await load_tickets()
+            ticket = next((t for t in tickets if t["channel_id"] == interaction.channel.id), None)
+            if not ticket or not is_allowed_for_ticket_actions(interaction.user, ticket, "Assign"):
+                await interaction.response.send_message("Not authorized.", ephemeral=True)
+                return
+            # Get available moderators/admins
+            guild = interaction.guild
+            available_users = [
+                member for member in guild.members
+                if any(role.id in ADMIN_ROLE_IDS + [MODERATOR_ROLE_ID] for role in member.roles)
+            ]
+            if not available_users:
+                await interaction.response.send_message("No moderators available to assign.", ephemeral=True)
+                return
+            # Send view with select
+            view = AssignView(available_users)
+            await interaction.response.send_message("Select a moderator to assign:", view=view, ephemeral=True)
+        except Exception as e:
+            Logger.error(f"Error in assign button: {e}")
+            await interaction.response.send_message("An error occurred. Please try again.", ephemeral=True)
 
     @discord.ui.button(label="Status", style=discord.ButtonStyle.green, emoji="📊")
     async def status(self, interaction: discord.Interaction, button: discord.ui.Button):
-        tickets = load_tickets()
-        ticket = next((t for t in tickets if t["channel_id"] == interaction.channel.id), None)
-        if ticket:
-            embed = create_ticket_embed(ticket, interaction.client.user)
-            await interaction.response.send_message(embed=embed, ephemeral=True)
-        else:
-            await interaction.response.send_message("Ticket not found.", ephemeral=True)
+        try:
+            Logger.info(f"Status button pressed by {interaction.user}")
+            tickets = await load_tickets()
+            ticket = next((t for t in tickets if t["channel_id"] == interaction.channel.id), None)
+            if ticket:
+                embed = create_ticket_embed(ticket, interaction.client.user)
+                await interaction.response.send_message(embed=embed, ephemeral=True)
+            else:
+                await interaction.response.send_message("Ticket not found.", ephemeral=True)
+        except Exception as e:
+            Logger.error(f"Error in status button: {e}")
+            await interaction.response.send_message("An error occurred. Please try again.", ephemeral=True)
 
     @discord.ui.button(label="Close", style=discord.ButtonStyle.red, emoji="🔒")
     async def close(self, interaction: discord.Interaction, button: discord.ui.Button):
-        tickets = load_tickets()
-        ticket = next((t for t in tickets if t["channel_id"] == interaction.channel.id), None)
-        if not ticket or not is_allowed_for_ticket_actions(interaction.user, ticket, "Close"):
-            await interaction.response.send_message("Not authorized.", ephemeral=True)
-            return
-        # Defer the interaction to prevent timeout
-        await interaction.response.defer()
-        # Send closing message and get the message object
-        msg = await interaction.channel.send("Closing ticket...")
-        followup = interaction.followup
-        # Update status
-        update_ticket(interaction.channel.id, {"status": "Closed"})
-        # Close asynchronously, pass the message to delete it later
-        asyncio.create_task(close_ticket_async(interaction.client, interaction.channel, ticket, followup, msg))
-        Logger.info(f"Ticket closing started for {interaction.channel}.")
+        try:
+            Logger.info(f"Close button pressed by {interaction.user}")
+            tickets = await load_tickets()
+            ticket = next((t for t in tickets if t["channel_id"] == interaction.channel.id), None)
+            if not ticket or not is_allowed_for_ticket_actions(interaction.user, ticket, "Close"):
+                await interaction.response.send_message("Not authorized.", ephemeral=True)
+                return
+            # Defer the interaction to prevent timeout
+            await interaction.response.defer()
+            # Send closing message and get the message object
+            msg = await interaction.channel.send("Closing ticket...")
+            followup = interaction.followup
+            # Update status
+            await update_ticket(interaction.channel.id, {"status": "Closed"})
+            # Close asynchronously, pass the message to delete it later
+            asyncio.create_task(close_ticket_async(interaction.client, interaction.channel, ticket, followup, msg))
+            Logger.info(f"Ticket closing started for {interaction.channel}.")
+        except Exception as e:
+            Logger.error(f"Error in close button: {e}")
+            await interaction.response.send_message("An error occurred. Please try again.", ephemeral=True)
 
     @discord.ui.button(label="Reopen", style=discord.ButtonStyle.secondary, emoji="🔓")
     async def reopen(self, interaction: discord.Interaction, button: discord.ui.Button):
-        tickets = load_tickets()
-        ticket = next((t for t in tickets if t["channel_id"] == interaction.channel.id), None)
-        if not ticket:
-            await interaction.response.send_message("Ticket not found.", ephemeral=True)
-            return
-        if ticket["status"] != "Closed":
-            await interaction.response.send_message("Ticket is already open.", ephemeral=True)
-            return
-        if ticket.get("reopen_count", 0) >= 1:
-            await interaction.response.send_message("This ticket cannot be reopened anymore.", ephemeral=True)
-            return
-        if not is_allowed_for_ticket_actions(interaction.user, ticket, "Reopen"):
-            await interaction.response.send_message("Not authorized.", ephemeral=True)
-            return
-        # Reopen: Set status to Open, unarchive, increase reopen_count
-        update_ticket(interaction.channel.id, {"status": "Open", "claimed_by": None, "assigned_to": None, "reopen_count": ticket.get("reopen_count", 0) + 1})
-        await interaction.channel.edit(archived=False)
-        await update_embed_and_disable_buttons(interaction)
-        await interaction.response.send_message(f"{interaction.user.mention} has reopened the ticket.", ephemeral=False)
-        Logger.info(f"Ticket #{ticket['ticket_num']} reopened by {interaction.user}.")
+        try:
+            Logger.info(f"Reopen button pressed by {interaction.user}")
+            tickets = await load_tickets()
+            ticket = next((t for t in tickets if t["channel_id"] == interaction.channel.id), None)
+            if not ticket:
+                await interaction.response.send_message("Ticket not found.", ephemeral=True)
+                return
+            if ticket["status"] != "Closed":
+                await interaction.response.send_message("Ticket is already open.", ephemeral=True)
+                return
+            if ticket.get("reopen_count", 0) >= 1:
+                await interaction.response.send_message("This ticket cannot be reopened anymore.", ephemeral=True)
+                return
+            if not is_allowed_for_ticket_actions(interaction.user, ticket, "Reopen"):
+                await interaction.response.send_message("Not authorized.", ephemeral=True)
+                return
+            # Reopen: Set status to Open, unarchive, increase reopen_count
+            await update_ticket(interaction.channel.id, {"status": "Open", "claimed_by": None, "assigned_to": None, "reopen_count": ticket.get("reopen_count", 0) + 1})
+            await interaction.channel.edit(archived=False)
+            await update_embed_and_disable_buttons(interaction)
+            await interaction.response.send_message(f"{interaction.user.mention} has reopened the ticket.", ephemeral=False)
+            Logger.info(f"Ticket #{ticket['ticket_num']} reopened by {interaction.user}.")
+        except Exception as e:
+            Logger.error(f"Error in reopen button: {e}")
+            await interaction.response.send_message("An error occurred. Please try again.", ephemeral=True)
 
 # === Cog definition ===
 class TicketSystem(commands.Cog):
@@ -529,7 +616,7 @@ class TicketSystem(commands.Cog):
     @commands.Cog.listener()
     async def on_ready(self):
         Logger.info("TicketSystem Cog ready. Restoring views for open tickets...")
-        tickets = load_tickets()
+        tickets = await load_tickets()
         now = datetime.now()
         for ticket in tickets:
             if ticket["status"] == "Open":
@@ -565,7 +652,7 @@ class TicketSystem(commands.Cog):
         await self.bot.wait_until_ready()
         while not self.bot.is_closed():
             Logger.info("Checking old tickets for deletion...")
-            tickets = load_tickets()
+            tickets = await load_tickets()
             now = datetime.now()
             to_delete = []
             for ticket in tickets:
@@ -588,7 +675,7 @@ class TicketSystem(commands.Cog):
                         Logger.info(f"Old ticket #{ticket['ticket_num']} deleted.")
                     else:
                         Logger.warning(f"Channel for ticket #{ticket['ticket_num']} not found.")
-                    delete_ticket(ticket["channel_id"])
+                    await delete_ticket(ticket["channel_id"])
                 except Exception as e:
                     Logger.error(f"Error deleting ticket #{ticket['ticket_num']}: {e}")
             await asyncio.sleep(86400)  # Wait 24 hours
