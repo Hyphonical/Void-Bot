@@ -27,7 +27,8 @@ TICKET_FILE = "tickets.json"
 
 # === Helper functions for JSON persistence ===
 async def load_tickets():
-    os.makedirs(os.path.dirname(TICKET_FILE), exist_ok=True)
+    if os.path.dirname(TICKET_FILE):
+        os.makedirs(os.path.dirname(TICKET_FILE), exist_ok=True)
     if not os.path.exists(TICKET_FILE):
         with open(TICKET_FILE, "w") as f:
             json.dump([], f)
