@@ -40,9 +40,11 @@ def FormatDescription(Desc) -> str:
 	if isinstance(Desc, dict):
 		Text = Desc.get('text', '')
 		Extra = Desc.get('extra', [])
-		Parts = [Text] + [FormatDescription(E) for E in Extra]
-		return StripColorCodes(''.join(Parts)).strip() or 'No description'
-	return 'No description'
+		Parts = [Text]
+		for E in Extra:
+			Parts.append(FormatDescription(E))
+		return StripColorCodes(''.join(Parts)).strip()
+	return ''
 
 
 # 💡 Measure latency (ping) to the server
@@ -134,7 +136,7 @@ def CreateStatusEmbed(
 	Version = Status.get('version', {}).get('name', 'Unknown')
 	PlayersOnline = Status.get('players', {}).get('online', 0)
 	PlayersMax = Status.get('players', {}).get('max', 0)
-	Description = FormatDescription(Status.get('description', 'No description'))
+	Description = FormatDescription(Status.get('description', '')) or 'No description'
 	FaviconUrl = Status.get('favicon')
 
 	# 📡 Measure latency
