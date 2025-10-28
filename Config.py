@@ -46,6 +46,9 @@ FuzzyMatchingThreshold = 0.6
 # Channel ID for live status updates
 LiveStatusChannelID = 1342510703386296483
 
+# Update interval for live status (in seconds)
+LiveStatusUpdateInterval = 60
+
 # File path for live status persistence
 LiveStatusFile = "live_status.json"
 
