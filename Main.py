@@ -47,10 +47,10 @@ class Bot(commands.Bot):
 			return
 
 		# ⚙️ Only sync global slash commands for production bot!
-        # This prevents the test bot from registering commands globally,
-        # keeping the global command list clean and avoiding clutter.
-        # Set BOT_TYPE=test in your .env for the test bot.
-		if os.getenv("BOT_TYPE") != "test":
+		# This prevents the test bot from registering commands globally,
+		# keeping the global command list clean and avoiding clutter.
+		# Set BOT_TYPE=test in your .env for the test bot.
+		if os.getenv('BOT_TYPE') != 'test':
 			Logger.info('Syncing application commands...')
 			# Logger.info(f'Global commands before sync: {[cmd.name for cmd in self.tree.get_commands()]}')  # 🐛 Debug: Global commands
 			await self.tree.sync()

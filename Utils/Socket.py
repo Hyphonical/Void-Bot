@@ -2,9 +2,13 @@
 import socket
 import struct
 import json
+import logging
 
 # ⚙️ Settings
 from Config import ProtocolVersion
+
+# Use Socket logger
+logger = logging.getLogger('Utils.Socket')
 
 
 # 💡 Helper function to pack a varint
@@ -52,10 +56,10 @@ def ReadVarint(Sock: socket.socket) -> int:
 
 # 🌱 Function to get Minecraft server status
 def GetStatus(Host: str, Port: int = 25565) -> dict:
-	# 🔌 Connect to server
-	Sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-	Sock.settimeout(5)
 	try:
+		# 🔌 Connect to server
+		Sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+		Sock.settimeout(5)
 		Sock.connect((Host, Port))
 
 		# 📤 Handshake packet
@@ -82,6 +86,15 @@ def GetStatus(Host: str, Port: int = 25565) -> dict:
 		Response = RecvExact(Sock, StringLength).decode('utf-8', errors='replace')
 
 		return json.loads(Response)
+	except socket.timeout:
+		logger.warning(f'Timeout connecting to Minecraft server {Host}:{Port}')
+		return {}
+	except ConnectionError as e:
+		logger.warning(f'Connection error to Minecraft server {Host}:{Port}: {e}')
+		return {}
+	except Exception as e:
+		logger.error(f'Error getting status from Minecraft server {Host}:{Port}: {e}')
+		return {}
 	finally:
 		try:
 			Sock.close()
