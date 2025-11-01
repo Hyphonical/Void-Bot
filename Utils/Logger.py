@@ -25,7 +25,7 @@ class Highlighter(RegexHighlighter):
 		r'Message deleted by (?P<User>.*?): "(?P<DeletedMessage>.*?)"',
 		r'Loading extension: (?P<Cog>.*)',
 		rf'(?P<Command>{CommandPrefix}.*)',
-		r'\[(?P<Gallery>Gallery)\]', # Highlight "Gallery" in square brackets
+		r'\[(?P<Gallery>Gallery)\]',  # Highlight "Gallery" in square brackets
 	]
 
 

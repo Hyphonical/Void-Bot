@@ -12,12 +12,13 @@ import re
 import logging
 from typing import Dict, Any
 
-# Import from Config (assuming VoidBot has similar config structure)
-# Removed Config imports - defining IDs directly in the cog for VoidBot
-ADMIN_ROLE_IDS = [1290261005955235840, 1308763721316958261]
-MODERATOR_ROLE_ID = 1264629488130723872
-TICKETS_CATEGORY_ID = 1308780597988036628
-TRANSCRIPT_CHANNEL_ID = 1308793574329946162
+# Import settings from Config
+from Config import (
+	ADMIN_ROLE_IDS,
+	MODERATOR_ROLE_ID,
+	TICKETS_CATEGORY_ID,
+	TRANSCRIPT_CHANNEL_ID,
+)
 
 
 def get_data_dir():

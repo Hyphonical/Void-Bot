@@ -27,18 +27,18 @@ LIVE_STATUS_FILE = LiveStatusFile
 
 # === Helper functions for JSON persistence ===
 async def load_live_status():
-    if not os.path.exists(LIVE_STATUS_FILE):
-        return {}
-    try:
-        with open(LIVE_STATUS_FILE, "r") as f:
-            return json.load(f)
-    except json.JSONDecodeError:
-        return {}
+	if not os.path.exists(LIVE_STATUS_FILE):
+		return {}
+	try:
+		with open(LIVE_STATUS_FILE, 'r') as f:
+			return json.load(f)
+	except json.JSONDecodeError:
+		return {}
 
 
 async def save_live_status(data):
-    with open(LIVE_STATUS_FILE, "w") as f:
-        json.dump(data, f, indent=2)
+	with open(LIVE_STATUS_FILE, 'w') as f:
+		json.dump(data, f, indent=2)
 
 
 class LiveStatusView(View):
@@ -67,7 +67,7 @@ class LiveStatus(commands.Cog):
 	async def on_ready(self):
 		# Load persistent data
 		status_data = await load_live_status()
-		message_id = status_data.get("message_id")
+		message_id = status_data.get('message_id')
 
 		self.Channel = self.Bot.get_channel(LiveStatusChannelID)
 		if self.Channel and isinstance(self.Channel, discord.TextChannel):
@@ -106,7 +106,7 @@ class LiveStatus(commands.Cog):
 
 			# Update channel name based on status
 			if self.Channel and isinstance(self.Channel, discord.TextChannel):
-				new_name = "🟢-server-online" if Status else "🔴-server-offline"
+				new_name = '🟢-server-online' if Status else '🔴-server-offline'
 				if self.Channel.name != new_name:
 					try:
 						await self.Channel.edit(name=new_name)
@@ -135,7 +135,7 @@ class LiveStatus(commands.Cog):
 							embed=Embed, view=ViewInstance, silent=True
 						)
 					# Save message ID for persistence
-					await save_live_status({"message_id": self.StatusMessage.id})
+					await save_live_status({'message_id': self.StatusMessage.id})
 				else:
 					# 🚫 Channel type does not support sending messages
 					self.StatusMessage = None
