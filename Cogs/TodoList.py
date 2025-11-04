@@ -19,13 +19,18 @@ logger = logging.getLogger(__name__)
 
 # === File path for to-do list data ===
 TODO_DATA_FILE = 'todo_list.json'
+TODO_PERSISTENT_VIEWS_FILE = 'todo_persistent_views.json'
 
 
 # === Helper function for embed footer ===
 def set_embed_footer(embed: discord.Embed, bot: discord.ClientUser = None) -> None:
-	"""Set footer on embed with bot name and pastel green color"""
+	"""Set footer on embed with bot name and color"""
 	embed.set_footer(text=BotName)
 	embed.color = EMBED_COLOR
+
+
+# === Todo List Channel ID ===
+# TODO_CHANNEL_ID is now imported from Config.py based on PROD_MODE
 
 
 # === Helper functions for data persistence ===
@@ -70,6 +75,28 @@ async def load_todo_data() -> Dict[str, Any]:
 					item['author_id'] = None
 					item['author_name'] = 'Unknown'
 
+		# Migrate to page-based format
+		for channel_id, channel_data in data['channels'].items():
+			# If channel has old "items" array instead of "pages"
+			if 'items' in channel_data and 'pages' not in channel_data:
+				logger.info(f'Migrating channel {channel_id} to page-based format')
+				old_items = channel_data.get('items', [])
+				channel_data['pages'] = [{'title': '📋 To-Do List', 'items': old_items}]
+				channel_data['current_page'] = 0
+				del channel_data['items']
+
+			# Ensure pages structure exists
+			if 'pages' not in channel_data:
+				channel_data['pages'] = [{'title': '📋 To-Do List', 'items': []}]
+
+			# Ensure current_page exists
+			if 'current_page' not in channel_data:
+				channel_data['current_page'] = 0
+
+			# Validate current_page is within bounds
+			if channel_data['current_page'] >= len(channel_data['pages']):
+				channel_data['current_page'] = 0
+
 		return data
 	except Exception as e:
 		logger.error(f'Error loading to-do data: {e}')
@@ -93,7 +120,11 @@ async def get_channel_data(data: Dict[str, Any], channel_id: int) -> Dict[str, A
 	"""Get data for a specific channel, creating if doesn't exist."""
 	channel_key = str(channel_id)
 	if channel_key not in data['channels']:
-		data['channels'][channel_key] = {'message_ids': [], 'items': []}
+		data['channels'][channel_key] = {
+			'message_ids': [],
+			'current_page': 0,
+			'pages': [{'title': '📋 To-Do List', 'items': []}],
+		}
 	return data['channels'][channel_key]
 
 
@@ -102,9 +133,453 @@ PRIORITY_EMOJIS = {'high': '🔴', 'medium': '🟡', 'low': '🟢'}
 
 
 # === Permission helper ===
-def is_mod_or_admin(user: discord.User) -> bool:
+def is_mod_or_admin(user) -> bool:
 	"""Check if user is moderator or admin."""
-	return any(role.id in ADMIN_ROLE_IDS + [MODERATOR_ROLE_ID] for role in user.roles)
+	# Handle both discord.Member and discord.User
+	if not hasattr(user, 'roles'):
+		return False
+	# Check if user has any admin role or the moderator role
+	return any(role.id in ADMIN_ROLE_IDS or role.id == MODERATOR_ROLE_ID for role in user.roles)
+
+
+# === Navigation View for page switching ===
+class TodoPageNavigationView(discord.ui.View):
+	def __init__(self, bot: commands.Bot, channel_id: int) -> None:
+		super().__init__(timeout=None)  # Persistent view
+		self.bot = bot
+		self.channel_id = channel_id
+		self.message = None  # Will be set after sending
+
+		# Cooldown tracking: {user_id: datetime of last use}
+		self.navigation_cooldowns = {}
+
+	def check_navigation_cooldown(self, user_id: int) -> tuple[bool, int]:
+		"""
+		Check if user is on cooldown for navigation buttons (1 minute).
+		Returns (can_use, cooldown_remaining_seconds).
+		"""
+		import datetime
+
+		if user_id not in self.navigation_cooldowns:
+			return True, 0
+
+		now = datetime.datetime.now(datetime.timezone.utc)
+		last_used = self.navigation_cooldowns[user_id]
+		cooldown_seconds = 60  # 1 minute cooldown
+
+		time_since_last_use = (now - last_used).total_seconds()
+
+		if time_since_last_use < cooldown_seconds:
+			remaining = int(cooldown_seconds - time_since_last_use)
+			return False, remaining
+
+		return True, 0
+
+	def update_navigation_cooldown(self, user_id: int) -> None:
+		"""Update cooldown tracking for a user."""
+		import datetime
+
+		self.navigation_cooldowns[user_id] = datetime.datetime.now(datetime.timezone.utc)
+
+	async def update_buttons(self) -> None:
+		"""Update button states based on current page."""
+		data = await load_todo_data()
+		channel_data = await get_channel_data(data, self.channel_id)
+		current_page = channel_data.get('current_page', 0)
+		total_pages = len(channel_data.get('pages', []))
+
+		# Update Previous button
+		self.previous_button.disabled = current_page <= 0
+
+		# Update Next button
+		self.next_button.disabled = current_page >= total_pages - 1
+
+		# Update page info label
+		self.page_info.label = f'Page {current_page + 1}/{total_pages}'
+
+	@discord.ui.button(
+		label='◀ Previous', style=discord.ButtonStyle.secondary, custom_id='todo_nav_previous'
+	)
+	async def previous_button(
+		self, interaction: discord.Interaction, button: discord.ui.Button
+	) -> None:
+		# Check cooldown for non-mods/admins
+		if not is_mod_or_admin(interaction.user):
+			can_use, remaining = self.check_navigation_cooldown(interaction.user.id)
+			if not can_use:
+				minutes = remaining // 60
+				seconds = remaining % 60
+				time_str = f'{minutes}m {seconds}s' if minutes > 0 else f'{seconds}s'
+				await interaction.response.send_message(
+					f'⏳ Please wait {time_str} before navigating again.',
+					ephemeral=True,
+				)
+				return
+
+		await interaction.response.defer()
+
+		# Load data and update page
+		data = await load_todo_data()
+		channel_data = await get_channel_data(data, self.channel_id)
+		current_page = channel_data.get('current_page', 0)
+
+		if current_page > 0:
+			channel_data['current_page'] = current_page - 1
+			save_todo_data(data)
+
+			# Update cooldown for non-mods/admins
+			if not is_mod_or_admin(interaction.user):
+				self.update_navigation_cooldown(interaction.user.id)
+
+			# Update the message
+			await self.refresh_display(interaction, data, channel_data)
+
+	@discord.ui.button(
+		label='📄 Page', style=discord.ButtonStyle.primary, custom_id='todo_nav_info', disabled=True
+	)
+	async def page_info(self, interaction: discord.Interaction, button: discord.ui.Button) -> None:
+		# This button is just for display, not clickable
+		pass
+
+	@discord.ui.button(
+		label='Next ▶', style=discord.ButtonStyle.secondary, custom_id='todo_nav_next'
+	)
+	async def next_button(
+		self, interaction: discord.Interaction, button: discord.ui.Button
+	) -> None:
+		# Check cooldown for non-mods/admins
+		if not is_mod_or_admin(interaction.user):
+			can_use, remaining = self.check_navigation_cooldown(interaction.user.id)
+			if not can_use:
+				minutes = remaining // 60
+				seconds = remaining % 60
+				time_str = f'{minutes}m {seconds}s' if minutes > 0 else f'{seconds}s'
+				await interaction.response.send_message(
+					f'⏳ Please wait {time_str} before navigating again.',
+					ephemeral=True,
+				)
+				return
+
+		await interaction.response.defer()
+
+		# Load data and update page
+		data = await load_todo_data()
+		channel_data = await get_channel_data(data, self.channel_id)
+		current_page = channel_data.get('current_page', 0)
+		total_pages = len(channel_data.get('pages', []))
+
+		if current_page < total_pages - 1:
+			channel_data['current_page'] = current_page + 1
+			save_todo_data(data)
+
+			# Update cooldown for non-mods/admins
+			if not is_mod_or_admin(interaction.user):
+				self.update_navigation_cooldown(interaction.user.id)
+
+			# Update the message
+			await self.refresh_display(interaction, data, channel_data)
+
+	@discord.ui.button(
+		label='Update',
+		style=discord.ButtonStyle.success,
+		custom_id='todo_nav_update',
+		emoji='🔄',
+		row=1,
+	)
+	async def update_button(
+		self, interaction: discord.Interaction, button: discord.ui.Button
+	) -> None:
+		# Check if user is mod or admin
+		if not is_mod_or_admin(interaction.user):
+			await interaction.response.send_message(
+				'❌ You do not have permission to update the todo list.',
+				ephemeral=True,
+			)
+			return
+
+		# Get the cog instance to call handle_todo_update
+		cog = self.bot.get_cog('TodoList')
+		if cog:
+			await cog.handle_todo_update(interaction)
+
+	@discord.ui.button(
+		label='Manage Pages',
+		style=discord.ButtonStyle.primary,
+		custom_id='todo_nav_manage',
+		emoji='⚙️',
+		row=1,
+	)
+	async def manage_pages_button(
+		self, interaction: discord.Interaction, button: discord.ui.Button
+	) -> None:
+		# Check if user is mod or admin
+		if not is_mod_or_admin(interaction.user):
+			await interaction.response.send_message(
+				'❌ You do not have permission to manage pages.',
+				ephemeral=True,
+			)
+			return
+
+		# Show page management menu
+		await load_todo_data()  # Ensure data is loaded for consistency
+
+		embed = discord.Embed(
+			title='⚙️ Page Management',
+			description='Manage your todo list pages:',
+			color=EMBED_COLOR,
+		)
+		set_embed_footer(embed, bot=self.bot.user)
+
+		view = TodoPageManagementView(self.bot, self.channel_id)
+		await interaction.response.send_message(
+			embed=embed, view=view, ephemeral=True, delete_after=60
+		)
+
+	async def refresh_display(
+		self, interaction: discord.Interaction, data: Dict[str, Any], channel_data: Dict[str, Any]
+	) -> None:
+		"""Refresh the todo list display for the current page."""
+		current_page_idx = channel_data.get('current_page', 0)
+		pages = channel_data.get('pages', [])
+
+		if 0 <= current_page_idx < len(pages):
+			current_page = pages[current_page_idx]
+			items = current_page.get('items', [])
+			page_title = current_page.get('title', '📋 To-Do List')
+
+			# Create embed
+			modal = TodoModal(self.bot, channel_id=self.channel_id)
+			embed = modal.create_todo_embed(
+				items,
+				is_first=True,
+				total_items=len(items),
+				page_title=page_title,
+				page_number=current_page_idx + 1,
+				total_pages=len(pages),
+			)
+
+			# Update navigation buttons
+			await self.update_buttons()
+
+			# Edit the message
+			if self.message:
+				await self.message.edit(embed=embed, view=self)
+			else:
+				# If message not set, edit through interaction
+				await interaction.message.edit(embed=embed, view=self)
+				self.message = interaction.message
+
+
+# === Page Management View ===
+class TodoPageManagementView(discord.ui.View):
+	def __init__(self, bot: commands.Bot, channel_id: int) -> None:
+		super().__init__(timeout=60)
+		self.bot = bot
+		self.channel_id = channel_id
+
+	@discord.ui.button(label='Add Page', style=discord.ButtonStyle.success, emoji='➕')
+	async def add_page(self, interaction: discord.Interaction, button: discord.ui.Button) -> None:
+		# Show modal to enter page title
+		modal = AddPageModal(self.bot, self.channel_id)
+		await interaction.response.send_modal(modal)
+
+	@discord.ui.button(label='Edit Page Title', style=discord.ButtonStyle.primary, emoji='✏️')
+	async def edit_page_title(
+		self, interaction: discord.Interaction, button: discord.ui.Button
+	) -> None:
+		# Load data
+		data = await load_todo_data()
+		channel_data = await get_channel_data(data, self.channel_id)
+		current_page = channel_data.get('current_page', 0)
+		pages = channel_data.get('pages', [])
+
+		if 0 <= current_page < len(pages):
+			current_title = pages[current_page].get('title', '📋 To-Do List')
+			modal = EditPageTitleModal(self.bot, self.channel_id, current_page, current_title)
+			await interaction.response.send_modal(modal)
+
+	@discord.ui.button(label='Delete Page', style=discord.ButtonStyle.danger, emoji='🗑️')
+	async def delete_page(
+		self, interaction: discord.Interaction, button: discord.ui.Button
+	) -> None:
+		# Load data
+		data = await load_todo_data()
+		channel_data = await get_channel_data(data, self.channel_id)
+		pages = channel_data.get('pages', [])
+		current_page = channel_data.get('current_page', 0)
+
+		# Can't delete if only one page
+		if len(pages) <= 1:
+			await interaction.response.send_message(
+				'❌ Cannot delete the last page! You must have at least one page.',
+				ephemeral=True,
+				delete_after=10,
+			)
+			return
+
+		# Show confirmation view
+		view = DeletePageConfirmView(self.bot, self.channel_id, current_page)
+		page_title = pages[current_page].get('title', 'Untitled')
+		page_items = len(pages[current_page].get('items', []))
+		embed = discord.Embed(
+			title='⚠️ Confirm Page Deletion',
+			description=f'Are you sure you want to delete page {current_page + 1}: **{page_title}**?\n\n'
+			f'This will delete all {page_items} items on this page!',
+			color=discord.Color.red(),
+		)
+		await interaction.response.send_message(
+			embed=embed, view=view, ephemeral=True, delete_after=30
+		)
+
+
+# === Modal for adding a new page ===
+class AddPageModal(discord.ui.Modal, title='➕ Add New Page'):
+	page_title = discord.ui.TextInput(
+		label='Page Title',
+		placeholder='e.g., Development Tasks, Bug Fixes, Future Ideas',
+		required=True,
+		max_length=100,
+	)
+
+	def __init__(self, bot: commands.Bot, channel_id: int) -> None:
+		super().__init__()
+		self.bot = bot
+		self.channel_id = channel_id
+
+	async def on_submit(self, interaction: discord.Interaction) -> None:
+		# Load data
+		data = await load_todo_data()
+		channel_data = await get_channel_data(data, self.channel_id)
+
+		# Add new page
+		new_page = {'title': self.page_title.value.strip(), 'items': []}
+		channel_data['pages'].append(new_page)
+
+		# Switch to new page
+		channel_data['current_page'] = len(channel_data['pages']) - 1
+
+		# Save data
+		save_todo_data(data)
+
+		# Update the message
+		modal = TodoModal(self.bot, channel_id=self.channel_id)
+		await interaction.response.defer()
+		await modal.update_todo_message(interaction, data, self.channel_id)
+
+		# Send confirmation (followup doesn't support delete_after)
+		await interaction.followup.send(
+			f'✅ Added new page: **{new_page["title"]}**', ephemeral=True
+		)
+
+		logger.info(
+			f"Added new todo page '{new_page['title']}' in channel {self.channel_id} by {interaction.user}"
+		)
+
+
+# === Modal for editing page title ===
+class EditPageTitleModal(discord.ui.Modal, title='✏️ Edit Page Title'):
+	page_title = discord.ui.TextInput(
+		label='Page Title',
+		placeholder='Enter new page title',
+		required=True,
+		max_length=100,
+	)
+
+	def __init__(
+		self, bot: commands.Bot, channel_id: int, page_index: int, current_title: str
+	) -> None:
+		super().__init__()
+		self.bot = bot
+		self.channel_id = channel_id
+		self.page_index = page_index
+		self.page_title.default = current_title
+
+	async def on_submit(self, interaction: discord.Interaction) -> None:
+		# Load data
+		data = await load_todo_data()
+		channel_data = await get_channel_data(data, self.channel_id)
+		pages = channel_data.get('pages', [])
+
+		if 0 <= self.page_index < len(pages):
+			old_title = pages[self.page_index]['title']
+			pages[self.page_index]['title'] = self.page_title.value.strip()
+
+			# Save data
+			save_todo_data(data)
+
+			# Update the message
+			modal = TodoModal(self.bot, channel_id=self.channel_id)
+			await interaction.response.defer()
+			await modal.update_todo_message(interaction, data, self.channel_id)
+
+			# Send confirmation (followup doesn't support delete_after)
+			await interaction.followup.send(
+				f'✅ Page title updated from **{old_title}** to **{pages[self.page_index]["title"]}**',
+				ephemeral=True,
+			)
+
+			logger.info(f'Updated page title in channel {self.channel_id} by {interaction.user}')
+
+
+# === Confirmation view for deleting a page ===
+class DeletePageConfirmView(discord.ui.View):
+	def __init__(self, bot: commands.Bot, channel_id: int, page_index: int) -> None:
+		super().__init__(timeout=30)
+		self.bot = bot
+		self.channel_id = channel_id
+		self.page_index = page_index
+
+	@discord.ui.button(label='Confirm Delete', style=discord.ButtonStyle.danger, emoji='✅')
+	async def confirm_delete(
+		self, interaction: discord.Interaction, button: discord.ui.Button
+	) -> None:
+		# Load data
+		data = await load_todo_data()
+		channel_data = await get_channel_data(data, self.channel_id)
+		pages = channel_data.get('pages', [])
+
+		# Validate
+		if len(pages) <= 1:
+			await interaction.response.send_message(
+				'❌ Cannot delete the last page!', ephemeral=True, delete_after=5
+			)
+			return
+
+		if 0 <= self.page_index < len(pages):
+			deleted_page = pages.pop(self.page_index)
+
+			# Adjust current page if needed
+			if channel_data['current_page'] >= len(pages):
+				channel_data['current_page'] = len(pages) - 1
+
+			# Save data
+			save_todo_data(data)
+
+			# Update the message
+			modal = TodoModal(self.bot, channel_id=self.channel_id)
+			await interaction.response.defer()
+			await modal.update_todo_message(interaction, data, self.channel_id)
+
+			# Send confirmation
+			deleted_title = deleted_page.get('title', 'Untitled')
+			deleted_items = len(deleted_page.get('items', []))
+			await interaction.followup.send(
+				f'✅ Deleted page: **{deleted_title}** ({deleted_items} items)',
+				ephemeral=True,
+				delete_after=5,
+			)
+
+			logger.info(
+				f"Deleted page '{deleted_title}' from channel {self.channel_id} by {interaction.user}"
+			)
+
+	@discord.ui.button(label='Cancel', style=discord.ButtonStyle.secondary, emoji='❌')
+	async def cancel_delete(
+		self, interaction: discord.Interaction, button: discord.ui.Button
+	) -> None:
+		await interaction.response.send_message(
+			'❌ Page deletion cancelled.', ephemeral=True, delete_after=5
+		)
 
 
 # === View for selecting priority before modal ===
@@ -125,8 +600,8 @@ class PrioritySelectView(discord.ui.View):
 		self.action = action
 		self.item_index = item_index
 		self.current_priority = current_priority or 'low'
-		self.current_text = current_text
-		self.management_message = management_message or ''
+		self.current_text = current_text or ''
+		self.management_message = management_message
 
 	@discord.ui.button(label='High', style=discord.ButtonStyle.danger, emoji='🔴')
 	async def select_high(
@@ -196,14 +671,41 @@ class TodoConfirmView(discord.ui.View):
 		data = await load_todo_data()
 		channel_data = await get_channel_data(data, self.channel_id)
 
+		# Get current page
+		current_page_idx = channel_data.get('current_page', 0)
+		pages = channel_data.get('pages', [])
+
+		# Validate and auto-correct if needed
+		if not pages:
+			logger.error(f'No pages found in channel {self.channel_id}, creating default page')
+			pages = [{'title': '📋 To-Do List', 'items': []}]
+			channel_data['pages'] = pages
+			current_page_idx = 0
+			channel_data['current_page'] = 0
+		elif current_page_idx >= len(pages):
+			logger.warning(
+				f'Invalid current_page index {current_page_idx} in channel {self.channel_id}, resetting to 0'
+			)
+			current_page_idx = 0
+			channel_data['current_page'] = 0
+
+		current_page = pages[current_page_idx]
+
 		if self.action == 'add':
-			channel_data['items'].append(new_item)
-			logger.info(f'To-do item added to channel {self.channel_id} by {interaction.user}')
+			current_page['items'].append(new_item)
+			logger.info(
+				f'To-do item added to page {current_page_idx} in channel {self.channel_id} by {interaction.user}'
+			)
 		elif self.action == 'edit' and self.item_index is not None:
-			if 0 <= self.item_index < len(channel_data['items']):
-				channel_data['items'][self.item_index] = new_item
+			if 0 <= self.item_index < len(current_page['items']):
+				current_page['items'][self.item_index] = new_item
 				logger.info(
-					f'To-do item {self.item_index} in channel {self.channel_id} edited by {interaction.user}'
+					f'To-do item {self.item_index} on page {current_page_idx} in channel '
+					f'{self.channel_id} edited by {interaction.user}'
+				)
+			else:
+				logger.error(
+					f'Invalid item index {self.item_index} for page {current_page_idx} in channel {self.channel_id}'
 				)
 
 		# Save data
@@ -235,6 +737,12 @@ class TodoConfirmView(discord.ui.View):
 		# Delete the view message (the original preview with buttons)
 		if self.view_message:
 			await self.view_message.delete()
+		# Delete the management message too
+		if self.management_message:
+			try:
+				await self.management_message.delete()
+			except Exception:
+				pass  # Ignore if already deleted
 
 
 # === Modal for adding/editing to-do items ===
@@ -391,8 +899,32 @@ Rules:
 	) -> None:
 		"""Update or create the to-do list message in the channel."""
 		channel_data = await get_channel_data(data, channel_id)
-		items = channel_data['items']
-		total_items = len(items)
+		current_page_idx = channel_data.get('current_page', 0)
+		pages = channel_data.get('pages', [])
+
+		# Validate and auto-correct current_page if out of bounds
+		if not pages:
+			logger.error(f'No pages found in channel {channel_id}, creating default page')
+			pages = [{'title': '📋 To-Do List', 'items': []}]
+			channel_data['pages'] = pages
+			current_page_idx = 0
+			channel_data['current_page'] = 0
+			save_todo_data(data)
+		elif current_page_idx >= len(pages):
+			logger.warning(
+				f'Invalid current_page index {current_page_idx} in channel {channel_id}, resetting to 0'
+			)
+			current_page_idx = 0
+			channel_data['current_page'] = 0
+			save_todo_data(data)
+
+		# Get current page items
+		current_page = pages[current_page_idx]
+		items = current_page.get('items', [])
+		page_title = current_page.get('title', '📋 To-Do List')
+
+		# Get cog reference
+		cog = self.bot.get_cog('TodoList')
 
 		# Delete old messages if exist
 		if channel_data.get('message_ids'):
@@ -406,34 +938,43 @@ Rules:
 							logger.info(
 								f'Deleted old to-do message {message_id} in channel {channel_id}'
 							)
+
+							# Remove from persistent views
+							if cog:
+								cog._remove_persistent_view(channel_id, message_id)
 						except Exception as e:
 							logger.warning(f'Could not delete old to-do message {message_id}: {e}')
 			except Exception as e:
 				logger.warning(f'Could not delete old to-do messages: {e}')
 
-		# Send messages with items, 12 per message
-		max_per_embed = 12
-		new_message_ids = []
+		# Create embed for current page
+		embed = self.create_todo_embed(
+			items,
+			is_first=True,
+			total_items=len(items),
+			page_title=page_title,
+			page_number=current_page_idx + 1,
+			total_pages=len(pages),
+		)
+
+		# Create navigation view
+		nav_view = TodoPageNavigationView(self.bot, channel_id)
+		await nav_view.update_buttons()
+
+		# Send new message with navigation
 		channel = interaction.channel
-		for i in range(0, total_items, max_per_embed):
-			end = min(i + max_per_embed, total_items)
-			embed_items = items[i:end]
-			is_first = i == 0
-			embed = self.create_todo_embed(
-				embed_items,
-				is_first=is_first,
-				total_items=total_items if is_first else None,
-				page_start=i + 1 if not is_first else None,
-				page_end=end if not is_first else None,
-			)
-			new_message = await channel.send(embed=embed)
-			new_message_ids.append(new_message.id)
+		new_message = await channel.send(embed=embed, view=nav_view)
+		nav_view.message = new_message
+
+		# Save persistent view
+		if cog:
+			cog._save_persistent_view(channel_id, new_message.id)
 
 		# Update channel data with new message info
-		channel_data['message_ids'] = new_message_ids
+		channel_data['message_ids'] = [new_message.id]
 		save_todo_data(data)
 
-		logger.info(f'Posted to-do messages in channel {channel_id}, messages {new_message_ids}')
+		logger.info(f'Posted to-do message in channel {channel_id}, message {new_message.id}')
 
 	def create_todo_embed(
 		self,
@@ -442,11 +983,21 @@ Rules:
 		total_items: Optional[int] = None,
 		page_start: Optional[int] = None,
 		page_end: Optional[int] = None,
+		page_title: Optional[str] = None,
+		page_number: Optional[int] = None,
+		total_pages: Optional[int] = None,
 	) -> discord.Embed:
 		"""Create a formatted to-do list embed."""
 		embed = discord.Embed(color=EMBED_COLOR)
 
-		if not is_first and page_start and page_end:
+		# Use page title if provided, otherwise use default
+		if page_title:
+			# Add page counter if multiple pages exist
+			if total_pages and total_pages > 1:
+				embed.title = f'{page_title} (Page {page_number}/{total_pages})'
+			else:
+				embed.title = page_title
+		elif not is_first and page_start and page_end:
 			embed.title = f'📋 To-Do List (Continued - Items {page_start}-{page_end})'
 		else:
 			embed.title = '📋 To-Do List'
@@ -560,25 +1111,32 @@ class TodoManageView(discord.ui.View):
 		# Load data
 		data = await load_todo_data()
 		channel_data = await get_channel_data(data, self.channel_id)
-		if not channel_data['items']:
-			await interaction.response.send_message(
-				'❌ No items to edit!', ephemeral=True, delete_after=10
+		current_page_idx = channel_data.get('current_page', 0)
+		pages = channel_data.get('pages', [])
+
+		if 0 <= current_page_idx < len(pages):
+			current_page = pages[current_page_idx]
+			items = current_page.get('items', [])
+
+			if not items:
+				await interaction.response.send_message(
+					'❌ No items to edit on current page!', ephemeral=True, delete_after=10
+				)
+				return
+
+			# Create view with select
+			view = TodoEditSelectView(self.bot, self.channel_id, items)
+
+			embed = discord.Embed(
+				title='✏️ Edit To-Do Item',
+				description='Select the item you want to edit:',
+				color=EMBED_COLOR,
 			)
-			return
+			set_embed_footer(embed, bot=self.bot.user)
 
-		# Create view with select
-		view = TodoEditSelectView(self.bot, self.channel_id, channel_data['items'])
-
-		embed = discord.Embed(
-			title='✏️ Edit To-Do Item',
-			description='Select the item you want to edit:',
-			color=EMBED_COLOR,
-		)
-		set_embed_footer(embed, bot=self.bot.user)
-
-		await interaction.response.send_message(
-			embed=embed, view=view, ephemeral=True, delete_after=30
-		)
+			await interaction.response.send_message(
+				embed=embed, view=view, ephemeral=True, delete_after=30
+			)
 
 	@discord.ui.button(label='Remove Item', style=discord.ButtonStyle.red, emoji='🗑️')
 	async def remove_item(
@@ -596,33 +1154,40 @@ class TodoManageView(discord.ui.View):
 		# Load data
 		data = await load_todo_data()
 		channel_data = await get_channel_data(data, self.channel_id)
-		if not channel_data['items']:
-			await interaction.response.send_message(
-				'❌ No items to remove!', ephemeral=True, delete_after=10
+		current_page_idx = channel_data.get('current_page', 0)
+		pages = channel_data.get('pages', [])
+
+		if 0 <= current_page_idx < len(pages):
+			current_page = pages[current_page_idx]
+			items = current_page.get('items', [])
+
+			if not items:
+				await interaction.response.send_message(
+					'❌ No items to remove on current page!', ephemeral=True, delete_after=10
+				)
+				return
+
+			# Create view with select
+			view = TodoRemoveSelectView(self.bot, self.channel_id, items)
+
+			# Check if select was created
+			if not view.select:
+				await interaction.response.send_message(
+					'❌ Failed to create removal options. Try again.',
+					ephemeral=True,
+					delete_after=10,
+				)
+				return
+
+			embed = discord.Embed(
+				title='🗑️ Remove To-Do Item',
+				description='Select the item you want to remove:',
+				color=discord.Color.red(),
 			)
-			return
 
-		# Create view with select
-		view = TodoRemoveSelectView(self.bot, self.channel_id, channel_data['items'])
-
-		# Check if select was created
-		if not view.select:
 			await interaction.response.send_message(
-				'❌ Failed to create removal options. Try again.',
-				ephemeral=True,
-				delete_after=10,
+				embed=embed, view=view, ephemeral=True, delete_after=30
 			)
-			return
-
-		embed = discord.Embed(
-			title='🗑️ Remove To-Do Item',
-			description='Select the item you want to remove:',
-			color=discord.Color.red(),
-		)
-
-		await interaction.response.send_message(
-			embed=embed, view=view, ephemeral=True, delete_after=30
-		)
 
 	@discord.ui.button(label='Clear All', style=discord.ButtonStyle.danger, emoji='🗑️')
 	async def clear_all(self, interaction: discord.Interaction, button: discord.ui.Button) -> None:
@@ -642,30 +1207,34 @@ class TodoManageView(discord.ui.View):
 			# Load data
 			data = await load_todo_data()
 			channel_data = await get_channel_data(data, self.channel_id)
+			current_page_idx = channel_data.get('current_page', 0)
+			pages = channel_data.get('pages', [])
 
-			# Clear all items
-			channel_data['items'] = []
-			save_todo_data(data)
+			# Clear all items on current page
+			if 0 <= current_page_idx < len(pages):
+				pages[current_page_idx]['items'] = []
+				save_todo_data(data)
 
-			# Update message
-			modal = TodoModal(self.bot, channel_id=self.channel_id)
-			await modal.update_todo_message(interaction, data, self.channel_id)
+				# Update message
+				modal = TodoModal(self.bot, channel_id=self.channel_id)
+				await modal.update_todo_message(interaction, data, self.channel_id)
 
-			logger.info(
-				f'All to-do items cleared in channel {self.channel_id} by {interaction.user}'
-			)
+				logger.info(
+					f'All to-do items cleared on page {current_page_idx} in channel '
+					f'{self.channel_id} by {interaction.user}'
+				)
 
-			# Send confirmation (stays for 3 seconds)
-			confirm_msg = await interaction.followup.send(
-				'✅ All to-do items cleared!', ephemeral=True
-			)
+				# Send confirmation (stays for 3 seconds)
+				confirm_msg = await interaction.followup.send(
+					'✅ All to-do items on current page cleared!', ephemeral=True
+				)
 
-			# Delete confirmation after 3 seconds
-			await asyncio.sleep(3)
-			try:
-				await confirm_msg.delete()
-			except Exception:
-				pass
+				# Delete confirmation after 3 seconds
+				await asyncio.sleep(3)
+				try:
+					await confirm_msg.delete()
+				except Exception:
+					pass
 		except Exception as e:
 			logger.error(f'Error clearing to-do items: {e}')
 			await interaction.followup.send(f'❌ Error clearing items: {str(e)}', ephemeral=True)
@@ -779,12 +1348,16 @@ class TodoRemoveSelectView(discord.ui.View):
 		# Load current data
 		data = await load_todo_data()
 		channel_data = await get_channel_data(data, self.channel_id)
+		current_page_idx = channel_data.get('current_page', 0)
+		pages = channel_data.get('pages', [])
 		removed_items = []
 
-		# Remove selected items (from end to start to avoid index issues)
-		for index in indices:
-			if 0 <= index < len(channel_data['items']):
-				removed_items.append(channel_data['items'].pop(index))
+		# Remove selected items from current page (from end to start to avoid index issues)
+		if 0 <= current_page_idx < len(pages):
+			current_page = pages[current_page_idx]
+			for index in indices:
+				if 0 <= index < len(current_page['items']):
+					removed_items.append(current_page['items'].pop(index))
 
 		save_todo_data(data)
 
@@ -796,7 +1369,8 @@ class TodoRemoveSelectView(discord.ui.View):
 		# Log removed items
 		removed_titles = ', '.join([f"'{item['title']}'" for item in reversed(removed_items)])
 		logger.info(
-			f'Removed {len(removed_items)} to-do item(s) from channel {self.channel_id}: {removed_titles} by {interaction.user}'
+			f'Removed {len(removed_items)} to-do item(s) from page {current_page_idx} in channel {self.channel_id}: '
+			f'{removed_titles} by {interaction.user}'
 		)
 
 		# Send confirmation
@@ -819,6 +1393,127 @@ class TodoList(commands.Cog):
 
 	def __init__(self, bot: commands.Bot) -> None:
 		self.bot = bot
+		self.persistent_views_file = TODO_PERSISTENT_VIEWS_FILE
+		self.persistent_views_data = []
+
+		# Load persistent views data silently (logging happens in restore)
+		if os.path.exists(self.persistent_views_file):
+			try:
+				with open(self.persistent_views_file, 'r', encoding='utf-8') as f:
+					self.persistent_views_data = json.load(f)
+			except Exception as e:
+				logger.error(f'Failed to load persistent views data: {e}')
+				self.persistent_views_data = []
+		else:
+			# Only create directory if there is one (not for root-level files)
+			dir_path = os.path.dirname(self.persistent_views_file)
+			if dir_path:
+				os.makedirs(dir_path, exist_ok=True)
+			self.persistent_views_data = []
+
+	async def cog_load(self) -> None:
+		"""Called when the cog is loaded (including reloads)."""
+		if self.bot.is_ready():
+			await self._restore_persistent_views()
+
+	@commands.Cog.listener()
+	async def on_ready(self) -> None:
+		"""Restore persistent views when the bot is ready."""
+		await self._restore_persistent_views()
+
+	async def _restore_persistent_views(self) -> None:
+		"""Restore persistent navigation views for all todo messages."""
+		restored_count = 0
+		cleaned_data = []
+
+		for view_data in self.persistent_views_data:
+			channel_id = view_data.get('channel_id')
+			message_id = view_data.get('message_id')
+
+			if not channel_id or not message_id:
+				continue
+
+			channel = self.bot.get_channel(channel_id)
+			if not channel:
+				logger.warning(f'Channel {channel_id} not found, skipping view restoration')
+				continue
+
+			try:
+				message = await channel.fetch_message(message_id)
+
+				# Create and attach the view
+				view = TodoPageNavigationView(self.bot, channel_id)
+				await view.update_buttons()
+				view.message = message
+
+				# Edit message to re-attach the view
+				await message.edit(view=view)
+
+				restored_count += 1
+				cleaned_data.append(view_data)
+				logger.info(
+					f'Restored todo navigation view for message {message_id} in channel {channel_id}'
+				)
+
+				await asyncio.sleep(1)  # Rate limit protection
+
+			except discord.NotFound:
+				logger.warning(f'Message {message_id} not found, removing from persistent views')
+			except Exception as e:
+				logger.error(f'Failed to restore view for message {message_id}: {e}')
+				cleaned_data.append(view_data)  # Keep on other errors
+
+		# Save cleaned data
+		self.persistent_views_data = cleaned_data
+		with open(self.persistent_views_file, 'w', encoding='utf-8') as f:
+			json.dump(self.persistent_views_data, f, indent=2)
+
+		logger.info(f'Restored {restored_count} persistent navigation views')
+
+	def _save_persistent_view(self, channel_id: int, message_id: int) -> None:
+		"""Save a persistent view to the data file."""
+		# Check if already exists
+		for view_data in self.persistent_views_data:
+			if (
+				view_data.get('channel_id') == channel_id
+				and view_data.get('message_id') == message_id
+			):
+				logger.info(f'View for message {message_id} already in persistent storage')
+				return  # Already saved
+
+		# Add new entry
+		self.persistent_views_data.append({'channel_id': channel_id, 'message_id': message_id})
+
+		# Save to file
+		try:
+			with open(self.persistent_views_file, 'w', encoding='utf-8') as f:
+				json.dump(self.persistent_views_data, f, indent=2)
+			logger.info(f'Saved persistent view for message {message_id} in channel {channel_id}')
+		except Exception as e:
+			logger.error(f'Failed to save persistent view: {e}')
+
+	def _remove_persistent_view(self, channel_id: int, message_id: int) -> None:
+		"""Remove a persistent view from the data file."""
+		original_count = len(self.persistent_views_data)
+		self.persistent_views_data = [
+			view_data
+			for view_data in self.persistent_views_data
+			if not (
+				view_data.get('channel_id') == channel_id
+				and view_data.get('message_id') == message_id
+			)
+		]
+
+		# Save to file if something was removed
+		if len(self.persistent_views_data) < original_count:
+			try:
+				with open(self.persistent_views_file, 'w', encoding='utf-8') as f:
+					json.dump(self.persistent_views_data, f, indent=2)
+				logger.info(
+					f'Removed persistent view for message {message_id} in channel {channel_id}'
+				)
+			except Exception as e:
+				logger.error(f'Failed to remove persistent view: {e}')
 
 	# 🧩 Shared handler for todo-update logic
 	async def handle_todo_update(self, ctx_or_interaction: Any) -> None:
@@ -848,11 +1543,19 @@ class TodoList(commands.Cog):
 		# Show management view
 		data = await load_todo_data()
 		channel_data = await get_channel_data(data, channel_id)
+		current_page_idx = channel_data.get('current_page', 0)
+		pages = channel_data.get('pages', [])
+
+		# Get current page item count
+		current_items = 0
+		if 0 <= current_page_idx < len(pages):
+			current_items = len(pages[current_page_idx].get('items', []))
 
 		embed = discord.Embed(
 			title='📋 To-Do List Management',
 			description=f'Use the buttons below to manage the to-do list for <#{channel_id}>.\n\n'
-			'**Current Items:** ' + str(len(channel_data['items'])),
+			f'**Current Page:** {current_page_idx + 1}/{len(pages)}\n'
+			f'**Items on Current Page:** {current_items}',
 			color=EMBED_COLOR,
 		)
 		set_embed_footer(embed, bot=self.bot.user)
@@ -881,18 +1584,35 @@ class TodoList(commands.Cog):
 
 		data = await load_todo_data()
 		channel_data = await get_channel_data(data, channel_id)
+		current_page_idx = channel_data.get('current_page', 0)
+		pages = channel_data.get('pages', [])
 
-		if not channel_data['items']:
-			message = f'📋 The to-do list for <#{channel_id}> is currently empty!'
+		# Check if current page has items
+		has_items = False
+		if 0 <= current_page_idx < len(pages):
+			has_items = len(pages[current_page_idx].get('items', [])) > 0
+
+		if not has_items:
+			message = f'📋 The current page of the to-do list for <#{channel_id}> is empty!'
 			if hasattr(ctx_or_interaction, 'send'):
 				await ctx_or_interaction.send(message)
 			else:
 				await ctx_or_interaction.response.send_message(message, ephemeral=True)
 			return
 
+		# Get current page data
+		current_page = pages[current_page_idx]
+		items = current_page.get('items', [])
+		page_title = current_page.get('title', '📋 To-Do List')
+
 		modal = TodoModal(self.bot, channel_id=channel_id)
 		embed = modal.create_todo_embed(
-			channel_data['items'], is_first=True, total_items=len(channel_data['items'])
+			items,
+			is_first=True,
+			total_items=len(items),
+			page_title=page_title,
+			page_number=current_page_idx + 1,
+			total_pages=len(pages),
 		)
 		if hasattr(ctx_or_interaction, 'send'):
 			await ctx_or_interaction.send(embed=embed)
